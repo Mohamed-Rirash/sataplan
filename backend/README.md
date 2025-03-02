@@ -155,3 +155,47 @@ MIT License
 - FastAPI Community
 - Python Open Source Ecosystem
 - Inspiration from personal productivity tools
+`
+create venv
+```bash
+uv venv
+```
+activate venv
+```bash
+source .venv/bin/activate
+```
+add dependencies
+```bash
+uv sync
+```
+
+Start the server
+
+```bash
+fastapi dev
+```
+
+Open the Swagger UI:
+
+[http://localhost:8000/api/docs](http://localhost:8000/api/docs)
+
+### 🖼 Screenshots
+![alt text](image-1.png)
+![alt text](image.png)
+![alt text](image-2.png)
+
+
+### 🏗 Tech Stack
+
+- Backend: FastAPI, PostgreSQL
+- Authentication: OAuth2 JWT Tokens
+- QR Code: QR Code Generator
+- frontend: next.js
+
+### 📜 License
+
+MIT
+
+### 🤝 Contact & Support
+
+For any issues, feel free to open an issue on GitHub or contact the maintainer.

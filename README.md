@@ -1,16 +1,69 @@
-# 🏆 Goal Management API
+# 🎯 SataPlan: Goal Management Platform
 
-A powerful API for managing goals, tracking progress, and staying motivated with QR code-based access and user authentication. Perfect for productivity apps and personal development tools.
+## 🌟 Overview
 
----
+SataPlan is a powerful goal management application designed to help users track, manage, and achieve their personal and professional objectives. Leveraging modern web technologies, SataPlan provides an intuitive and secure platform for goal setting and progress tracking.
 
-## 🎥 Demo
+## ✨ Features
 
-📌 *Demo link or GIF placeholder here*
+- 🚀 Goal Creation and Management
+- 📊 Progress Tracking
+- 🔐 Secure User Authentication
+- 🔍 Goal Search and Filtering
+- 📱 Responsive Web Interface
+- 🖼️ Intuitive User Experience
 
----
+## 🛠️ Tech Stack
 
-## 📖 API Reference
+- **Backend**: Python, FastAPI
+- **Authentication**: JWT (JSON Web Tokens)
+- **Database**: SQLAlchemy (with SQLite/PostgreSQL)
+- **Frontend**: To be developed
+
+## 🚦 Prerequisites
+
+- Python 3.8+
+- pip
+- Virtual environment (recommended)
+
+## 🔧 Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/Mohamed-Rirash/sataplan.git
+cd sataplan
+```
+
+2. Create a virtual environment:
+```bash
+python3 -m venv venv
+source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
+```
+
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+## 🏃 Running the Application
+
+1. Navigate to the backend directory:
+```bash
+cd backend
+```
+
+2. Start the FastAPI server:
+```bash
+uvicorn main:app --reload
+```
+
+## 📡 API Endpoints
+
+### Goals Management
+
+- `POST /goals/add`: Create a new goal
+- `GET /goals/allgoals`: Retrieve all goals
+- `GET /goals/goal/{goal_id}`: Retrieve a specific goal
 
 ### 🎯 Goals
 
@@ -236,3 +289,25 @@ MIT
 ### 🤝 Contact & Support
 
 For any issues, feel free to open an issue on GitHub or contact the maintainer.
+
+## 🔒 Authentication
+
+User authentication is implemented using JWT tokens. Register and login endpoints are available to manage user access.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## 📝 License
+
+Distributed under the MIT License. See `LICENSE` for more information.
+
+## 📞 Contact
+
+Mohamed Rirash - [Your Email or LinkedIn]
+
+Project Link: [https://github.com/Mohamed-Rirash/sataplan](https://github.com/Mohamed-Rirash/sataplan)
