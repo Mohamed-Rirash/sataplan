@@ -1,238 +1,157 @@
-# 🏆 Goal Management API
+# 🏆 SataPlan: Your Personal Goal Tracking Companion
 
-A powerful API for managing goals, tracking progress, and staying motivated with QR code-based access and user authentication. Perfect for productivity apps and personal development tools.
+## 🌟 Project Overview
 
----
+SataPlan is a cutting-edge personal development platform designed to transform how you set, track, and achieve your goals. More than just a goal-tracking app, it's a motivational ecosystem that combines technology, psychology, and user-centric design.
 
-## 🎥 Demo
 
-📌 *Demo link or GIF placeholder here*
+## 🚀 Key Features
 
----
+### 🎯 Intelligent Goal Management
+- Create, update, and track goals with ease
+- Personalized goal setting with descriptive details
+- Comprehensive goal lifecycle management
 
-## 📖 API Reference
+### 💡 Motivational Ecosystem
+- Add inspiring quotes and links to each goal
+- Maintain a personal motivation database
+- Stay inspired and focused on your objectives
 
-### 🎯 Goals
+### 🔐 Secure Access Mechanism
+- OAuth2 JWT-based authentication
+- QR Code-based goal access
+- One-time use tokens for enhanced security
 
-#### ➕ Create a New Goal
-```http
-POST /goals/add
+### 🔎 Smart Search Functionality
+- Live search across goals and motivations
+- Quick and intuitive navigation
 
-Request Body:
+## 🖼 Application Screenshots
 
-{
-  "name": "Goal Name",
-  "description": "Goal Description"
-}
+### Dashboard Overview
+![Dashboard showing goal tracking and management](image.png)
 
-Responses:
+### Goal Creation Interface
+![Goal creation and motivation adding screen](image-1.png)
 
-    201 Created: Goal added successfully.
-    422 Unprocessable Entity: Validation error.
-```
+### QR Code Access
+![QR code generation and access mechanism](image-2.png)
 
-#### 📜 Retrieve All Goals
-```http
-GET /goals/allgoals
-```
+*Note: Screenshots showcase the intuitive user interface and key features of SataPlan*
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| offset    | int  | Pagination offset (default: 0). |
-| limit     | int  | Number of goals per request. |
+## 🛠 Tech Stack
 
-#### 🔍 Retrieve a Specific Goal
-```http
-GET /goals/goal/{goal_id}
-```
+### Backend
+- **Framework**: FastAPI
+- **Database**: SQLite (Extensible to PostgreSQL)
+- **Authentication**: OAuth2 JWT
+- **Language**: Python 3.10+
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| goal_id   | int  | Required. Goal ID. |
+### Frontend
+- **Framework**: Next.js
+- **State Management**: TBD
+- **Styling**: TBD
 
-#### ✏️ Update a Goal
-```http
-PATCH /goals/update/{goal_id}
-```
+## 🚦 API Endpoints
 
-#### 🗑️ Delete a Goal
-```http
-DELETE /goals/delete/{goal_id}
-```
+### Authentication
+- User registration
+- Login
+- Token management
 
-### 💡 Motivations
+### Goal Management
+- Create goals
+- Retrieve goals
+- Update goals
+- Delete goals
 
-#### ➕ Add Motivation to a Goal
-```http
-POST /motivations/{goal_id}
-```
+### Motivation Management
+- Add motivational quotes
+- Retrieve motivations
+- Delete motivations
 
-Request Body:
+### QR Code Access
+- Generate permanent QR codes
+- Verify goal access
+- View goals via QR
 
-{
-  "quote": "Stay motivated!",
-  "link": "https://example.com/"
-}
+## 🔑 Security Features
 
-#### 🔍 Retrieve Motivations for a Goal
-```http
-GET /motivations/{goal_id}
-```
+- JWT Token Authentication
+- One-time use QR tokens
+- Secure password hashing
+- Role-based access control
 
-#### 🗑️ Delete a Motivation
-```http
-DELETE /motivations/{motivation_id}
-```
+## 🛠 Local Development Setup
 
-### 📷 QR Code Management
+### Prerequisites
+- Python 3.10+
+- uv (Python package manager)
+- Git
 
-#### 🆕 Generate QR Code for a Goal
-```http
-GET /qrcode/generate-permanent-qr/{goal_id}
-```
-
-#### 🔐 Verify Goal Access via QR Code
-```http
-POST /qrcode/verify-goal-access
-```
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| goal_id   | int  | Required. Goal ID. |
-| password   | string | Required. Goal password. |
-
-#### 👀 View Goal Using QR Code
-```http
-GET /qrcode/view-goal
-```
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| token     | string | Required. Access token |
-
-### 🔎 Live Search
-
-```http
-GET /search/live-search
-```
-
-Description:
-Retrieve live search results for goals and motivations.
-
-### 👤 User Profile Management
-
-#### 🆕 Create User Profile
-```http
-POST /user/create-profile
-```
-
-Request Body:
-
-{
-  "firstname": "John",
-  "lastname": "Doe",
-  "bio": "A passionate developer."
-}
-
-#### 🔍 Retrieve User Profile
-```http
-GET /user/me
-```
-
-#### ✏️ Update User Profile
-```http
-PUT /user/update-profile
-```
-
-Request Body:
-
-{
-  "firstname": "John",
-  "lastname": "Doe",
-  "bio": "An experienced software engineer."
-}
-
-### 🚀 Features
-
-- ✅ User Authentication & Authorization
-- ✅ Goal Tracking & Management
-- ✅ Motivational Quotes Integration
-- ✅ QR Code-Based Goal Access
-- ✅ Live Search Functionality
-- ✅ Secure Token-Based API
-
-### 🛠 Installation
-
-Install dependencies using uv (Python package manager).
-
+### Installation Steps
 ```bash
-uv pip install -r requirements.txt
-```
-
-### 🔑 Environment Variables
-generate a secret key using the command below and add it to the .env file
-```python
-python -c "import secrets; print(secrets.token_hex(32))"
-```
-
-Create a .env file and add the following:
-
-```
-AUTH_SECRET_KEY=your secret key # secret key to sign the tokens generate it using the command aboce
-ALGORITHM=HS256 # algorithm used to sign the token
-QR_CODE_URL=http://localhost:5173/private
-CORS_ALLOW_ORIGINS=http://localhost:5173 #your cors url
-DATABASE_URL=sqlite:///db.sqlite #your database url
-```
-
-### 🏃‍♂️ Run Locally
-
-Clone the project
-
-```bash
+# Clone the repository
 git clone https://github.com/Mohamed-Rirash/sataplan.git
 cd sataplan/backend
-```
-create venv
-```bash
+
+# Create virtual environment
 uv venv
-```
-activate venv
-```bash
+
+# Activate virtual environment
 source .venv/bin/activate
-```
-add dependencies
-```bash
+
+# Install dependencies
 uv sync
-```
 
-Start the server
+# Generate secret key
+python -c "import secrets; print(secrets.token_hex(32))"
 
-```bash
+# Create .env file with generated key and configurations
+# Add necessary environment variables
+
+# Start the development server
 fastapi dev
 ```
 
-Open the Swagger UI:
+## 🔒 Environment Configuration
 
-[http://localhost:8000/api/docs](http://localhost:8000/api/docs)
+Create a `.env` file with:
+```
+AUTH_SECRET_KEY=your_generated_secret_key
+ALGORITHM=HS256
+QR_CODE_URL=http://localhost:5173/private
+CORS_ALLOW_ORIGINS=http://localhost:5173
+DATABASE_URL=sqlite:///db.sqlite
+```
 
-### 🖼 Screenshots
-![alt text](image-1.png)
-![alt text](image.png)
-![alt text](image-2.png)
+## 🚀 Deployment
 
+### Recommended Deployment Platforms
+- Vercel
+- Heroku
+- AWS Elastic Beanstalk
+- DigitalOcean App Platform
 
-### 🏗 Tech Stack
+## 🤝 Contributing
 
-- Backend: FastAPI, PostgreSQL
-- Authentication: OAuth2 JWT Tokens
-- QR Code: QR Code Generator
-- frontend: next.js
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
-### 📜 License
+## 📜 License
 
-MIT
+MIT License
 
-### 🤝 Contact & Support
+## 🌍 Contact
 
-For any issues, feel free to open an issue on GitHub or contact the maintainer.
+**Maintainer**: Mohamed Rirash
+**GitHub**: [Mohamed-Rirash](https://github.com/Mohamed-Rirash)
+
+## 🙏 Acknowledgements
+
+- FastAPI Community
+- Python Open Source Ecosystem
+- Inspiration from personal productivity tools
