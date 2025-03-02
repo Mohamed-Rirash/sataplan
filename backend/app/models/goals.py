@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, ForeignKey, Integer, String
+from sqlalchemy import Column, ForeignKey, Integer, String, func, DateTime
 from sqlalchemy.orm import relationship
 
 from app.db import Base
@@ -21,6 +21,7 @@ class Goal(Base):
         nullable=False,
         index=True,
     )
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Use a string for the relationship to avoid circular imports
     user = relationship("User", back_populates="goal", lazy="joined")

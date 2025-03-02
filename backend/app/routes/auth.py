@@ -6,7 +6,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from jose import jwt
 from sqlalchemy.exc import IntegrityError
 
-from app.config import *
+from app.config import SECRET_KEY, ALGORITHM
 from app.dependencies import db_dependency, user_dependency
 from app.models.users import Profile, User
 from app.schemas.users import (
@@ -285,9 +285,18 @@ async def create_user_profile(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="User ID is required",
             )
+
+        # Add validation for profile parameter
+        if profile is None:
+            logger.error("Profile data is missing")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Profile data is required",
+            )
+
         # Check if this user has a profile already exists
-        profile = db.query(Profile).filter(Profile.user_id == user_id).first()
-        if profile:
+        existing_profile = db.query(Profile).filter(Profile.user_id == user_id).first()
+        if existing_profile:
             logger.error("User already has a profile")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -343,7 +352,10 @@ async def get_user(user: user_dependency, db: db_dependency) -> UserRead:
 
         if not result:
             logger.warning(f"User not found. User ID: {user_id}")
-            raise ValidationError(f"User with ID {user_id} not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
 
         logger.info(f"Retrieved user. User ID: {user_id}")
 
@@ -357,12 +369,9 @@ async def get_user(user: user_dependency, db: db_dependency) -> UserRead:
             bio=result.profile.bio if result.profile else None,
             created_at=result.created_at.isoformat(),  # Convert to string for JSON serialization
         )
-    except ValidationError as ve:
-        logger.error(f"Validation error: {str(ve)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=ve.errors(),
-        )
+    except HTTPException as http_error:
+        logger.error(f"HTTP error: {str(http_error)}")
+        raise http_error
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
         raise HTTPException(

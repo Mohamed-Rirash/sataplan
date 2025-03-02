@@ -203,6 +203,7 @@ async def verify_goal_access(goal_id: int, password: str, db: db_dependency):
                 "goal_id": goal_id,
                 "user_id": user_id,
                 "type": "permanent_qr_access",
+
             },
             expires_delta=datetime.timedelta(minutes=15),  # Short-lived access
         )
@@ -250,8 +251,9 @@ async def view_goal(
         payload = decode_token(token)
 
         # Validate token type
-        if payload.get("type") != "permanent_qr_access":
-            logger.warning("Invalid token type attempted")
+        allowed_types = ["permanent_qr_access", "qr_onetime"]
+        if payload.get("type") not in allowed_types:
+            logger.warning(f"Invalid token type: {payload.get('type')}")
             raise AuthorizationError("Invalid token")
 
         # Extract goal_id from the token
@@ -286,8 +288,12 @@ async def view_goal(
     except AuthorizationError as e:
         logger.warning(f"Access denied: {str(e)}")
         return JSONResponse(
-            status_code=e.status_code,
-            content={"error": "Access Denied", "message": str(e.detail)},
+            status_code=401,
+            content={
+                "error": "Access Denied",
+                "message": str(e.detail),
+                "code": "TOKEN_ERROR"
+            },
         )
 
     except Exception as e:

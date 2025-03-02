@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import BaseModel, EmailStr, validator, Field
 import re
 
@@ -105,6 +106,7 @@ class TokenResponse(BaseModel):
     access_token_expires_in: int = 3600
     refresh_token_expires_in: int = 3600
 
+
 class UserRead(BaseModel):
     id: int
     first_name: str | None = None
@@ -121,30 +123,24 @@ class TokenPayload(BaseModel):
     user_id: str
 
 
-
-
-
 class ProfileCreate(BaseModel):
-    firstname: str = None
-    lastname: str = None
-    bio: str = None
+    firstname: Optional[str] = None
+    lastname: Optional[str] = None
+    bio: Optional[str] = None
 
     class Config:
         orm_mode = True
 
-class ProfileUpdate(BaseModel):
-    firstname: str = None
-    lastname: str = None
-    bio: str = None
+
+class ProfileUpdate(ProfileCreate):
+    pass
 
     class Config:
         orm_mode = True
 
-class ProfileRead(BaseModel):
+
+class ProfileRead(ProfileCreate):
     id: int
-    firstname: str
-    lastname: str
-    bio: str = None
     user_id: int
 
     class Config:

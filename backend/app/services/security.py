@@ -9,6 +9,7 @@ from jose import JWTError, jwt, ExpiredSignatureError
 from sqlalchemy.orm import Session
 import logging
 import urllib.parse
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,43 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
+# In-memory token tracking (for demonstration, replace with a more robust solution in production)
+USED_TOKENS = {}
+
+def is_token_used(token_id: str) -> bool:
+    """
+    Check if a token has been used or expired.
+
+    Args:
+        token_id (str): Unique identifier for the token
+
+    Returns:
+        bool: True if token is used or expired, False otherwise
+    """
+    if token_id not in USED_TOKENS:
+        return False
+
+    token_info = USED_TOKENS[token_id]
+
+    # Check if token is expired
+    if datetime.now(timezone.utc) > token_info['expiration']:
+        del USED_TOKENS[token_id]
+        return False
+
+    return token_info['used']
+
+def mark_token_used(token_id: str, expiration: datetime):
+    """
+    Mark a token as used.
+
+    Args:
+        token_id (str): Unique identifier for the token
+        expiration (datetime): Expiration time of the token
+    """
+    USED_TOKENS[token_id] = {
+        'used': True,
+        'expiration': expiration
+    }
 
 async def hash_password(password: str) -> str:
     """
@@ -194,7 +232,8 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
 
 async def create_access_token_for_qrcode(
     data: Dict[str, Any],
-    expires_delta: Optional[timedelta] = timedelta(minutes=15),
+    expires_delta: Optional[timedelta] = timedelta(minutes=1),
+    one_time_use: bool = True,
 ) -> str:
     """
     Create a JWT access token with flexible payload and expiration.
@@ -202,7 +241,9 @@ async def create_access_token_for_qrcode(
     Args:
         data (Dict[str, Any]): Payload data to be encoded in the token
         expires_delta (Optional[timedelta], optional): Token expiration time.
-Defaults to 15 minutes.
+Defaults to 1 minute.
+        one_time_use (bool, optional): Flag to indicate if token is one-time use.
+Defaults to True.
 
     Returns:
         str: Encoded JWT token
@@ -220,20 +261,26 @@ Defaults to 15 minutes.
 
         # Set expiration time with timezone awareness
         expire = datetime.now(timezone.utc) + (
-            expires_delta or timedelta(minutes=15)
+            expires_delta or timedelta(minutes=1)
         )
-        to_encode.update({"exp": expire})
 
-        # Validate required fields (optional, but recommended)
-        if "type" not in to_encode:
-            logger.warning("Token generated without specifying token type")
+        # Generate a unique identifier for the token
+        token_id = str(uuid.uuid4())
+
+        # Update payload with expiration, token type, and one-time use flag
+        to_encode.update({
+            "exp": expire,
+            "type": "qr_onetime",
+            "token_id": token_id,
+            "one_time_use": one_time_use
+        })
 
         # Encode the token
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
         # Log token generation (be careful not to log sensitive information)
         logger.info(
-            f"Access token generated for type: {to_encode.get('type', 'unknown')}"
+            f"One-time use QR access token generated. Token ID: {token_id}"
         )
 
         return encoded_jwt
@@ -250,4 +297,64 @@ Defaults to 15 minutes.
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate access token",
+        )
+
+
+def decode_token(token: str) -> Dict[str, Any]:
+    """
+    Decode and validate a JWT token.
+
+    Args:
+        token (str): JWT token to decode
+
+    Returns:
+        Dict[str, Any]: Decoded token payload
+
+    Raises:
+        HTTPException: If token is invalid or has been used
+    """
+    try:
+        # Decode the token
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+
+        # Check for one-time use token
+        if payload.get("one_time_use", False):
+            token_id = payload.get("token_id")
+            if not token_id:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid token: missing token ID"
+                )
+
+            # Check if token has been used
+            if is_token_used(token_id):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token has already been used"
+                )
+
+            # Mark token as used if it's a one-time use token
+            mark_token_used(token_id, datetime.fromtimestamp(payload['exp'], tz=timezone.utc))
+
+        return payload
+
+    except ExpiredSignatureError:
+        logger.warning("Token has expired")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired"
+        )
+
+    except JWTError:
+        logger.warning("Invalid token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token"
+        )
+
+    except Exception as e:
+        logger.error(f"Unexpected error decoding token: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"An unexpected error occurred while verifying the token: {str(e)}"
         )
