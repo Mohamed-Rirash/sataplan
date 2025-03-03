@@ -15,7 +15,7 @@ class GoalBase(BaseModel):
 
 
 class GoalCreate(GoalBase):
-    created_at: datetime
+    Pass    
 
 
 class GoalUpdate(GoalBase):
