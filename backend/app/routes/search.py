@@ -36,7 +36,14 @@ async def websocket_search(
                 )
 
                 # Convert Goal objects to dictionaries for better readability
-                result = [GoalRead.from_orm(goal).dict() for goal in goals]
+                result = []
+                for goal in goals:
+                    goal_dict = GoalRead.from_orm(goal).dict()
+                    # Convert any datetime fields to ISO format strings
+                    for key, value in goal_dict.items():
+                        if hasattr(value, 'isoformat'):
+                            goal_dict[key] = value.isoformat()
+                    result.append(goal_dict)
 
                 await websocket.send_json(result)
             else:
