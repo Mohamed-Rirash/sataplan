@@ -15,7 +15,7 @@ class GoalBase(BaseModel):
 
 
 class GoalCreate(GoalBase):
-    Pass    
+    pass  
 
 
 class GoalUpdate(GoalBase):
