@@ -18,7 +18,8 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 # In-memory token tracking (for demonstration, replace with a more robust solution in production)
-USED_TOKENS = {}
+USED_TOKENS: dict[str, datetime] = {}
+
 
 def is_token_used(token_id: str) -> bool:
     """
@@ -36,11 +37,12 @@ def is_token_used(token_id: str) -> bool:
     token_info = USED_TOKENS[token_id]
 
     # Check if token is expired
-    if datetime.now(timezone.utc) > token_info['expiration']:
+    if datetime.now(timezone.utc) > token_info["expiration"]:
         del USED_TOKENS[token_id]
         return False
 
-    return token_info['used']
+    return token_info["used"]
+
 
 def mark_token_used(token_id: str, expiration: datetime):
     """
@@ -50,10 +52,8 @@ def mark_token_used(token_id: str, expiration: datetime):
         token_id (str): Unique identifier for the token
         expiration (datetime): Expiration time of the token
     """
-    USED_TOKENS[token_id] = {
-        'used': True,
-        'expiration': expiration
-    }
+    USED_TOKENS[token_id] = {"used": True, "expiration": expiration}
+
 
 async def hash_password(password: str) -> str:
     """
@@ -236,20 +236,20 @@ async def create_access_token_for_qrcode(
     one_time_use: bool = True,
 ) -> str:
     """
-    Create a JWT access token with flexible payload and expiration.
+        Create a JWT access token with flexible payload and expiration.
 
-    Args:
-        data (Dict[str, Any]): Payload data to be encoded in the token
-        expires_delta (Optional[timedelta], optional): Token expiration time.
-Defaults to 1 minute.
-        one_time_use (bool, optional): Flag to indicate if token is one-time use.
-Defaults to True.
+        Args:
+            data (Dict[str, Any]): Payload data to be encoded in the token
+            expires_delta (Optional[timedelta], optional): Token expiration time.
+    Defaults to 1 minute.
+            one_time_use (bool, optional): Flag to indicate if token is one-time use.
+    Defaults to True.
 
-    Returns:
-        str: Encoded JWT token
+        Returns:
+            str: Encoded JWT token
 
-    Raises:
-        HTTPException: If token generation fails
+        Raises:
+            HTTPException: If token generation fails
     """
     try:
         # Validate input
@@ -268,12 +268,14 @@ Defaults to True.
         token_id = str(uuid.uuid4())
 
         # Update payload with expiration, token type, and one-time use flag
-        to_encode.update({
-            "exp": expire,
-            "type": "qr_onetime",
-            "token_id": token_id,
-            "one_time_use": one_time_use
-        })
+        to_encode.update(
+            {
+                "exp": expire,
+                "type": "qr_onetime",
+                "token_id": token_id,
+                "one_time_use": one_time_use,
+            }
+        )
 
         # Encode the token
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
@@ -323,38 +325,39 @@ def decode_token(token: str) -> Dict[str, Any]:
             if not token_id:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid token: missing token ID"
+                    detail="Invalid token: missing token ID",
                 )
 
             # Check if token has been used
             if is_token_used(token_id):
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Token has already been used"
+                    detail="Token has already been used",
                 )
 
             # Mark token as used if it's a one-time use token
-            mark_token_used(token_id, datetime.fromtimestamp(payload['exp'], tz=timezone.utc))
+            mark_token_used(
+                token_id,
+                datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+            )
 
         return payload
 
     except ExpiredSignatureError:
         logger.warning("Token has expired")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired"
         )
 
     except JWTError:
         logger.warning("Invalid token")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
         )
 
     except Exception as e:
         logger.error(f"Unexpected error decoding token: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"An unexpected error occurred while verifying the token: {str(e)}"
+            detail=f"An unexpected error occurred while verifying the token: {str(e)}",
         )

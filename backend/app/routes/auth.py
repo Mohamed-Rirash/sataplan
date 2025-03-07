@@ -34,9 +34,7 @@ class AuthenticationError(HTTPException):
     """Custom exception for authentication-related errors."""
 
     def __init__(self, detail: str):
-        super().__init__(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail=detail
-        )
+        super().__init__(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
 
 
 class UserValidationError(HTTPException):
@@ -69,14 +67,10 @@ async def create_user(user: UserCreate, db: db_dependency) -> dict:
         existing_user_by_username = (
             db.query(User).filter(User.username == user.username).first()
         )
-        existing_user_by_email = (
-            db.query(User).filter(User.email == user.email).first()
-        )
+        existing_user_by_email = db.query(User).filter(User.email == user.email).first()
 
         if existing_user_by_username:
-            logger.warning(
-                f"Signup attempt with existing username: {user.username}"
-            )
+            logger.warning(f"Signup attempt with existing username: {user.username}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Username already exists",
@@ -165,7 +159,8 @@ async def login(
             logger.warning(f"Failed login attempt: {form_data.username}")
             raise AuthenticationError("Invalid credentials")
 
-        if not user.is_active:
+        # check if user is in active
+        if user.is_active == False:
             logger.warning(f"Login attempt for inactive user: {user.username}")
             raise AuthenticationError("Account is not active")
 
@@ -234,15 +229,13 @@ async def refresh_token(refresh_token: str, db: db_dependency) -> TokenResponse:
             access_token=new_access_token,
             refresh_token=new_refresh_token,
             token_type="bearer",
-            access_token_expires_in=24 * 60 * 7,
-            refresh_token_expires_in=24 * 60 * 15,  # it
+            access_token_expires_in=15,
+            refresh_token_expires_in=24 * 60 * 7,  # 7 days
         )
 
     except jwt.ExpiredSignatureError:
         logger.warning("Expired refresh token")
-        raise AuthenticationError(
-            "Refresh token has expired. Please log in again."
-        )
+        raise AuthenticationError("Refresh token has expired. Please log in again.")
 
     except (jwt.JWTError, AuthenticationError) as token_error:
         logger.error(f"Token validation error: {str(token_error)}")
