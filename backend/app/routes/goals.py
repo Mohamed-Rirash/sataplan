@@ -8,7 +8,7 @@ from app.schemas.goals import GoalCreate, GoalRead, GoalUpdate
 from app.dependencies import db_dependency, user_dependency
 from app.models import Goal
 from fastapi import WebSocket, WebSocketDisconnect
-
+from uuid import UUID
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -159,7 +159,7 @@ async def get_all_goals(
 
 @router.get("/goal/{goal_id}", response_model=GoalRead)
 async def get_goal(
-    goal_id: int, db: db_dependency, user: user_dependency
+    goal_id: UUID, db: db_dependency, user: user_dependency
 ) -> GoalRead:
     """
     Retrieve a specific goal by its ID for the authenticated user.
@@ -211,7 +211,7 @@ async def get_goal(
 
 @router.patch("/update/{goal_id}", response_model=GoalRead)
 async def update_goal(
-    goal_id: int, data: GoalUpdate, db: db_dependency, user: user_dependency
+    goal_id: UUID, data: GoalUpdate, db: db_dependency, user: user_dependency
 ) -> GoalRead:
     """
     Update an existing goal for the authenticated user.
@@ -282,12 +282,12 @@ async def update_goal(
 
 
 @router.delete("/delete/{goal_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_goal(goal_id: int, db: db_dependency, user: user_dependency):
+async def delete_goal(goal_id: UUID, db: db_dependency, user: user_dependency):
     """
     Delete a goal for the authenticated user.
 
     Args:
-        goal_id (int): The ID of the goal to delete.
+        goal_id (UUID): The ID of the goal to delete.
         db (db_dependency): The database session.
         user (user_dependency): The authenticated user's information.
 
@@ -338,6 +338,3 @@ async def delete_goal(goal_id: int, db: db_dependency, user: user_dependency):
             detail="An unexpected error occurred",
         )
 
-
-# live search with websocker
-#

@@ -10,6 +10,8 @@ from app.dependencies import db_dependency, user_dependency
 from app.models import Goal, Motivation
 from app.schemas.motivations import MotivationCreate
 
+from uuid import UUID
+
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -91,7 +93,7 @@ def get_user_goal(db, goal_id: int, user_id: int):
 
 @router.post("/{goal_id}", status_code=status.HTTP_201_CREATED)
 async def add_motivation(
-    goal_id: int,
+    goal_id: UUID,
     db: db_dependency,
     user: user_dependency,
     data: MotivationCreate,
@@ -157,7 +159,7 @@ async def add_motivation(
 
 @router.get("/{goal_id}")
 async def get_motivations_by_goal(
-    goal_id: int, db: db_dependency, user: user_dependency
+    goal_id: UUID, db: db_dependency, user: user_dependency
 ) -> dict:
     """
     Retrieve all motivations for a specific Goal.
@@ -219,18 +221,23 @@ async def get_motivations_by_goal(
 
 @router.delete("/{motivation_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_motivation(
-    motivation_id: int, db: db_dependency, user: user_dependency
+    motivation_id: UUID, db: db_dependency, user: user_dependency
 ):
     """
     Delete a specific motivation.
 
     Args:
-        motivation_id (int): The ID of the motivation to delete
+        motivation_id (UUID): The ID of the motivation to delete
         db (db_dependency): Database session
         user (user_dependency): User authentication data
 
     Returns:
         Response: No content on success
+
+    Raises:
+        ValidationError: If motivation is not found or belongs to another user
+        AuthorizationError: If user is not authenticated
+        HTTPException: For unexpected server errors
     """
     try:
         # Validate user and get user ID
@@ -246,31 +253,39 @@ async def delete_motivation(
 
         if not motivation:
             logger.warning(
-                f"Motivation not found. ID: {motivation_id}, User ID: {user_id}"
+                f"Motivation deletion attempt failed. "
+                f"Motivation ID: {motivation_id}, User ID: {user_id}"
             )
-            raise ValidationError(
-                f"Motivation with ID {motivation_id} not found for this user"
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Motivation with ID {motivation_id} not found or not authorized"
             )
 
         # Delete the motivation
         db.delete(motivation)
-        db.commit()
 
-        logger.info(f"Motivation deleted successfully. ID: {motivation_id}")
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        try:
+            db.commit()
+            logger.info(f"Motivation deleted successfully. ID: {motivation_id}")
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    except (ValidationError, AuthorizationError) as e:
-        raise e
+        except SQLAlchemyError as db_error:
+            db.rollback()
+            logger.error(
+                f"Database error during motivation deletion: {str(db_error)}. "
+                f"Motivation ID: {motivation_id}, User ID: {user_id}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database error occurred while deleting motivation"
+            )
 
-    except SQLAlchemyError as e:
-        db.rollback()  # Rollback the session on error
-        logger.error(f"Database error during motivation deletion: {str(e)}")
-        raise ValidationError(f"Database error: {str(e)}")
+    except (ValidationError, AuthorizationError) as auth_error:
+        raise auth_error
 
     except Exception as e:
-        db.rollback()  # Rollback the session on unexpected error
         logger.error(f"Unexpected error during motivation deletion: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+            detail="An unexpected error occurred during motivation deletion"
         )

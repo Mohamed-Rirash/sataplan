@@ -1,15 +1,20 @@
 from fastapi import FastAPI
-from app.routes import auth, goals, motivations, qrcode,search
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
+from fastapi.routing import APIRouter
+
 from app.config import CORS_ALLOW_ORIGINS
+from app.routes import auth, goals, motivations, qrcode, search
+
+# Define API version
+API_VERSION = "v1"
 
 app = FastAPI(
     title="Goal Tracker API",
-description="An application that allows users to set and track their goals, motivated by personal incentives. Goals can be accessed securely and conveniently by generating a QR code, which only the user can scan.",
-    version="1.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
+    description="An application that allows users to set and track their goals, motivated by personal incentives. Goals can be accessed securely and conveniently by generating a QR code, which only the user can scan.",
+    version=API_VERSION,
+    docs_url=f"/api/{API_VERSION}/docs",
+    redoc_url=f"/api/{API_VERSION}/redoc",
     contact={
         "name": "Rirash",
         "url": "https://rirash.com",
@@ -27,10 +32,7 @@ app.add_middleware(
     minimum_size=100,
 )
 
-origins = [
-    "http://localhost:5173",
-    CORS_ALLOW_ORIGINS
-]
+origins = ["http://localhost:5173", CORS_ALLOW_ORIGINS]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -38,17 +40,35 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-@app.get("/health")
+
+# Create a versioned router
+versioned_router = APIRouter(prefix=f"/api/{API_VERSION}")
+
+
+@versioned_router.get("/health")
 async def health():
     return {"message": "Healthy"}
 
-app.include_router(auth.router)
-app.include_router(goals.router)
-app.include_router(motivations.router)
-app.include_router(qrcode.router)
-app.include_router(search.router)
-app.include_router(auth.guest_router)
 
-# app.include_router(qrcodenew.router)
-#
-#
+# Include routers with version prefix
+versioned_router.include_router(
+    auth.router,
+)
+versioned_router.include_router(
+    goals.router,
+)
+versioned_router.include_router(
+    motivations.router,
+)
+versioned_router.include_router(
+    qrcode.router,
+)
+versioned_router.include_router(
+    search.router,
+)
+versioned_router.include_router(
+    auth.user_router,
+)
+
+# Include the versioned router in the main app
+app.include_router(versioned_router)

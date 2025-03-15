@@ -1,3 +1,4 @@
+from uuid import UUID
 from pydantic import BaseModel, Field
 from datetime import datetime
 
@@ -15,7 +16,7 @@ class GoalBase(BaseModel):
 
 
 class GoalCreate(GoalBase):
-    pass  
+    pass
 
 
 class GoalUpdate(GoalBase):
@@ -23,9 +24,10 @@ class GoalUpdate(GoalBase):
 
 
 class GoalRead(GoalBase):
-    id: int
-    user_id: int
+    id: UUID
+    user_id: UUID
     created_at: datetime
 
     class Config:
         from_attributes = True
+        arbitrary_types_allowed = True

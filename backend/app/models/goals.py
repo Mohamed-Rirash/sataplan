@@ -1,6 +1,15 @@
+import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, ForeignKey, Integer, String, func, DateTime
+from sqlalchemy import (
+    Column,
+    DateTime,
+    ForeignKey,
+    String,
+    func,
+    Integer,
+)
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from app.db import Base
@@ -11,12 +20,13 @@ if TYPE_CHECKING:
 
 class Goal(Base):
     __tablename__ = "goals"
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    id = Column(UUID(), primary_key=True, index=True, default=uuid.uuid4)
     name = Column(String(80), index=True, nullable=False)
     description = Column(String, index=True)
+    imatmul = Column(Integer, index=True)
 
     user_id = Column(
-        Integer,
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,

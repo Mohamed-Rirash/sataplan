@@ -21,6 +21,7 @@ from app.services.security import (
     decode_token,
     verify_password,
 )
+from uuid import UUID
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -81,14 +82,14 @@ router = APIRouter(
 
 @router.get("/generate-permanent-qr/{goal_id}")
 async def generate_permanent_qrcode(
-    user: user_dependency,db: db_dependency, goal_id: int
+    user: user_dependency,db: db_dependency, goal_id: UUID
 ):
     """
     Generate a permanent QR code for a specific goal with a unique password.
 
     Args:
         user (user_dependency): Authenticated user
-        goal_id (int): ID of the goal to generate QR code for
+        goal_id (UUID): ID of the goal to generate QR code for
         db (db_dependency): Database session
 
     Returns:
@@ -101,16 +102,26 @@ async def generate_permanent_qrcode(
     try:
         # Validate user and get user ID
         user_id = validate_user(user)
-        logger.debug(f"User ID: {user_id}")
+        logger.debug(f"Authenticated User ID: {user_id}")
 
         # Verify the goal exists and belongs to the user
         goal = await get_goal_by_id(db, goal_id)
-        logger.debug(f"Goal fetched: {goal}")  # Log the goal object
+
+        if not goal:
+            logger.warning(f"Goal not found: {goal_id}")
+            raise ValidationError("Goal not found")
+
+        logger.debug(f"Goal details: {goal}")
+        logger.debug(f"Goal user_id: {goal.user_id}")
+        logger.debug(f"Authenticated user_id: {user_id}")
 
         # Ensure the goal belongs to the authenticated user
-        if goal.user_id != user_id:
+        if str(goal.user_id) != str(user_id):
             logger.warning(
-                f"Unauthorized QR code generation attempt. goal ID: {goal_id}, User ID: {user_id}"
+                f"Unauthorized QR code generation attempt. "
+                f"Goal ID: {goal_id}, "
+                f"Goal User ID: {goal.user_id}, "
+                f"Authenticated User ID: {user_id}"
             )
             raise AuthorizationError(
                 "You do not have permission to generate QR for this goal"
@@ -160,12 +171,12 @@ async def generate_permanent_qrcode(
 
 
 @router.post("/verify-goal-access")
-async def verify_goal_access(goal_id: int, password: str, db: db_dependency):
+async def verify_goal_access(goal_id: UUID, password: str, db: db_dependency):
     """
     Verify the goal-specific password and user ownership.
 
     Args:
-        goal_id (int): ID of the goal to verify
+        goal_id (UUID): ID of the goal to verify
         password (str): Password to verify
         db (db_dependency): Database session
 
@@ -269,13 +280,13 @@ async def view_goal(
         return JSONResponse(
             status_code=200,
             content={
-                "goal_id": goal_details.id,
+                "goal_id": goal_details.id.hex,  # Convert UUID to hex string
                 "goal_details": {
                     "name": goal_details.name,
                     "description": goal_details.description,
                     "motivations": [
                         {
-                            "id": motivation.id,
+                            "id": motivation.id.hex,  # Convert UUID to hex string
                             "quote": motivation.quote,
                             "link": motivation.link,
                         }

@@ -1,22 +1,29 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, LargeBinary
-from sqlalchemy.orm import relationship
-from app.db import Base
+import uuid
 from typing import TYPE_CHECKING
+
+from sqlalchemy import Column, ForeignKey, String
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 from sqlalchemy_utils import URLType
 
+from app.db import Base
+
 if TYPE_CHECKING:
-    from app.models.goals import Goal  # Import only during type checking
+    pass  # Import only during type checking
 
 
 class Motivation(Base):
     __tablename__ = "motivations"
 
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    id = Column(
+        UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4
+    )
+
     quote = Column(String(500), index=True, nullable=True, default=None)
     link = Column(URLType, index=True, nullable=True, default=None)
 
     goal_id = Column(
-        Integer,
+        UUID(as_uuid=True),
         ForeignKey("goals.id", ondelete="CASCADE"),
         nullable=False,
         index=True,

@@ -1,6 +1,7 @@
 from typing import Optional
 from pydantic import BaseModel, EmailStr, validator, Field
 import re
+from uuid import UUID
 
 
 class UserBase(BaseModel):
@@ -103,12 +104,12 @@ class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
-    access_token_expires_in: int = 3600
-    refresh_token_expires_in: int = 3600
+    access_token_expires_in: int = 1000 * 60 * 15  # 15 minutes in milliseconds
+    refresh_token_expires_in: int = 7 * 24 * 3600  # 7 days in seconds
 
 
 class UserRead(BaseModel):
-    id: int
+    id: UUID
     first_name: str | None = None
     last_name: str | None = None
     email: str
@@ -140,8 +141,15 @@ class ProfileUpdate(ProfileCreate):
 
 
 class ProfileRead(ProfileCreate):
-    id: int
-    user_id: int
+    id: str
+    user_id: str
 
     class Config:
         orm_mode = True
+        json_encoders = {
+            UUID: str  # Convert UUID to string during JSON serialization
+        }
+
+    @validator('id', 'user_id', pre=True)
+    def convert_uuid_to_str(cls, v):
+        return str(v) if isinstance(v, UUID) else v

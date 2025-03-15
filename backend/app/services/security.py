@@ -153,13 +153,13 @@ async def authenticate_user(username_or_email: str, password: str, db: Session):
 
 
 # step 2: create access token
-async def create_access_token(username: str, user_id: int, plan_id: int = None):
+async def create_access_token(username: str, user_id, plan_id: int = None):
     """
     Create access and refresh tokens for an authenticated user.
 
     Args:
         username (str): Username of the authenticated user
-        user_id (int): ID of the authenticated user
+        user_id: ID of the authenticated user (can be UUID or int)
         plan_id (int, optional): ID of the plan associated with the token
 
     Returns:
@@ -169,10 +169,13 @@ async def create_access_token(username: str, user_id: int, plan_id: int = None):
     refresh_token_expires = timedelta(days=7)
 
     try:
+        # Convert user_id to string if it's a UUID
+        user_id_str = str(user_id)
+
         # Create token payload with optional plan_id
         access_token_payload = {
             "sub": username,  # Use username as sub
-            "id": user_id,  # Use id for user identification
+            "id": user_id_str,  # Convert to string for JSON serialization
             "exp": datetime.now(timezone.utc) + access_token_expires,
         }
 
@@ -189,7 +192,7 @@ async def create_access_token(username: str, user_id: int, plan_id: int = None):
         # Similar modification for refresh token
         refresh_token_payload = {
             "sub": username,
-            "id": user_id,
+            "id": user_id_str,
             "exp": datetime.now(timezone.utc) + refresh_token_expires,
         }
 
@@ -202,10 +205,11 @@ async def create_access_token(username: str, user_id: int, plan_id: int = None):
         return access_token, refresh_token
 
     except Exception as e:
+        logger.error(f"Token generation error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Token generation error: {str(e)}",
-        )
+            detail=f"Token generation error: {str(e)}"
+        ) from e
 
 
 # step 3: get current user
@@ -232,73 +236,44 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
 
 async def create_access_token_for_qrcode(
     data: Dict[str, Any],
-    expires_delta: Optional[timedelta] = timedelta(minutes=1),
-    one_time_use: bool = True,
+    expires_delta: Optional[timedelta] = None
 ) -> str:
     """
-        Create a JWT access token with flexible payload and expiration.
+    Create an access token for QR code access with proper UUID handling.
 
-        Args:
-            data (Dict[str, Any]): Payload data to be encoded in the token
-            expires_delta (Optional[timedelta], optional): Token expiration time.
-    Defaults to 1 minute.
-            one_time_use (bool, optional): Flag to indicate if token is one-time use.
-    Defaults to True.
+    Args:
+        data (Dict[str, Any]): Token payload data
+        expires_delta (Optional[timedelta]): Token expiration time
 
-        Returns:
-            str: Encoded JWT token
-
-        Raises:
-            HTTPException: If token generation fails
+    Returns:
+        str: Encoded JWT token
     """
+    # Create a copy of the data to avoid modifying the original
+    to_encode = data.copy()
+
+    # Convert any UUID objects to strings
+    for key, value in to_encode.items():
+        if isinstance(value, uuid.UUID):
+            to_encode[key] = str(value)
+
+    # Set expiration time
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+    # Add expiration to the payload
+    to_encode.update({"exp": expire})
+
+    # Encode the token
     try:
-        # Validate input
-        if not isinstance(data, dict):
-            raise ValueError("Token payload must be a dictionary")
-
-        # Create a copy of the payload to avoid modifying the original
-        to_encode = data.copy()
-
-        # Set expiration time with timezone awareness
-        expire = datetime.now(timezone.utc) + (
-            expires_delta or timedelta(minutes=1)
-        )
-
-        # Generate a unique identifier for the token
-        token_id = str(uuid.uuid4())
-
-        # Update payload with expiration, token type, and one-time use flag
-        to_encode.update(
-            {
-                "exp": expire,
-                "type": "qr_onetime",
-                "token_id": token_id,
-                "one_time_use": one_time_use,
-            }
-        )
-
-        # Encode the token
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-        # Log token generation (be careful not to log sensitive information)
-        logger.info(
-            f"One-time use QR access token generated. Token ID: {token_id}"
-        )
-
         return encoded_jwt
-
-    except ValueError as ve:
-        logger.error(f"Invalid token payload: {str(ve)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid token payload: {str(ve)}",
-        )
-
     except Exception as e:
-        logger.error(f"Token generation failed: {str(e)}")
+        logger.error(f"Token generation error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate access token",
+            detail="Failed to generate access token"
         )
 
 

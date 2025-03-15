@@ -1,21 +1,7 @@
+from uuid import UUID
 from pydantic import BaseModel, Field, HttpUrl
 from typing import Optional
 
-
-# class MotivationCreate(BaseModel):
-#     """
-#     Schema for creating a new motivation.
-#     """
-
-#     quote: Optional[str] = Field(
-#         None,
-#         min_length=0,
-#         max_length=500,
-#         description="Motivational quote text",
-#     )
-#     link: Optional[HttpUrl] = Field(
-#         None, description="URL pointing to any media or social media"
-#     )
 
 
 from pydantic import model_validator
@@ -49,10 +35,10 @@ class MotivationCreate(BaseModel):
 
 
 class MotivationRead(BaseModel):
-    id: int
+    id: UUID
     quote: str
     link: Optional[str]
-    goal_id: int
+    goal_id: UUID
 
     class Config:
         from_attributes = True

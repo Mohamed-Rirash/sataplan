@@ -34,7 +34,9 @@ class AuthenticationError(HTTPException):
     """Custom exception for authentication-related errors."""
 
     def __init__(self, detail: str):
-        super().__init__(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
+        super().__init__(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=detail
+        )
 
 
 class UserValidationError(HTTPException):
@@ -63,20 +65,25 @@ async def create_user(user: UserCreate, db: db_dependency) -> dict:
             - 500 for unexpected server errors
     """
     try:
-        # Check if username or email already exists before creating
-        existing_user_by_username = (
-            db.query(User).filter(User.username == user.username).first()
-        )
-        existing_user_by_email = db.query(User).filter(User.email == user.email).first()
+        # Use exists() instead of first() to avoid potential race conditions
+        username_exists = db.query(
+            db.query(User).filter(User.username == user.username).exists()
+        ).scalar()
 
-        if existing_user_by_username:
-            logger.warning(f"Signup attempt with existing username: {user.username}")
+        email_exists = db.query(
+            db.query(User).filter(User.email == user.email).exists()
+        ).scalar()
+
+        if username_exists:
+            logger.warning(
+                f"Signup attempt with existing username: {user.username}"
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Username already exists",
             )
 
-        if existing_user_by_email:
+        if email_exists:
             logger.warning(f"Signup attempt with existing email: {user.email}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -93,28 +100,28 @@ async def create_user(user: UserCreate, db: db_dependency) -> dict:
             password=hashed_password,
             is_active=True,
             created_at=datetime.now(timezone.utc),
-            # Consider email verification in future
         )
 
         db.add(created_user)
 
         try:
             db.commit()
+            db.refresh(created_user)
             logger.info(f"User created successfully: {user.username}")
-        except IntegrityError:
+
+            return {"message": "User created successfully", "user_id": str(created_user.id)}
+
+        except IntegrityError as ie:
             db.rollback()
+            # Log the specific integrity error for debugging
             logger.error(
-                f"Database integrity error during user creation: {user.username}"
+                f"Database integrity error during user creation: {user.username}. "
+                f"Error details: {str(ie)}"
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username or email already exists",
+                detail="Username or email is already in use",
             )
-
-        # Refresh to get the full user object with ID
-        db.refresh(created_user)
-
-        return {"message": "User created successfully"}
 
     except HTTPException:
         # Re-raise HTTPException to maintain original error handling
@@ -174,7 +181,6 @@ async def login(
             access_token=access_token,
             refresh_token=refresh_token,
             token_type="bearer",
-            expires_in=24 * 60 * 60,
         )
 
     except AuthenticationError as auth_error:
@@ -229,13 +235,13 @@ async def refresh_token(refresh_token: str, db: db_dependency) -> TokenResponse:
             access_token=new_access_token,
             refresh_token=new_refresh_token,
             token_type="bearer",
-            access_token_expires_in=15,
-            refresh_token_expires_in=24 * 60 * 7,  # 7 days
         )
 
     except jwt.ExpiredSignatureError:
         logger.warning("Expired refresh token")
-        raise AuthenticationError("Refresh token has expired. Please log in again.")
+        raise AuthenticationError(
+            "Refresh token has expired. Please log in again."
+        )
 
     except (jwt.JWTError, AuthenticationError) as token_error:
         logger.error(f"Token validation error: {str(token_error)}")
@@ -251,25 +257,38 @@ async def refresh_token(refresh_token: str, db: db_dependency) -> TokenResponse:
 
 # -----------------------------------------------------------------------------------------------------
 # user routes
-guest_router = APIRouter(prefix="/user", tags=["user"])
+user_router = APIRouter(prefix="/user", tags=["user"])
 
 
 # create user profile route
-@guest_router.post(
-    "/create-profile",
-    status_code=status.HTTP_201_CREATED,
-    response_model=ProfileRead,
-)
-async def create_user_profile(
-    user: user_dependency, db: db_dependency, profile: ProfileCreate
+@user_router.post("/create-profile", response_model=ProfileRead)
+async def create_profile(
+    profile: ProfileCreate,
+    user: user_dependency,
+    db: db_dependency
 ):
+    """
+    Create a user profile with proper UUID handling.
+
+    Args:
+        profile (ProfileCreate): Profile creation details
+        user (user_dependency): Authenticated user
+        db (db_dependency): Database session
+
+    Returns:
+        ProfileRead: Created or existing profile details
+
+    Raises:
+        HTTPException: If profile creation fails
+    """
     try:
+        # Validate user and get user ID
         if not user:
             logger.error("User not authenticated")
             raise AuthenticationError("User not authenticated")
 
         user_id = user.get("id")
-        logger.debug(f"User ID: {user_id}")
+        logger.debug(f"Creating profile for user ID: {user_id}")
 
         # Check if user_id is None
         if user_id is None:
@@ -279,53 +298,71 @@ async def create_user_profile(
                 detail="User ID is required",
             )
 
-        # Add validation for profile parameter
-        if profile is None:
-            logger.error("Profile data is missing")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Profile data is required",
-            )
-
-        # Check if this user has a profile already exists
+        # Check if a profile already exists for this user
         existing_profile = db.query(Profile).filter(Profile.user_id == user_id).first()
         if existing_profile:
-            logger.error("User already has a profile")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User already has a profile",
+            logger.info(f"Profile already exists for user ID: {user_id}. Returning existing profile.")
+
+            # Convert existing profile to ProfileRead
+            return ProfileRead(
+                id=str(existing_profile.id),
+                user_id=str(existing_profile.user_id),
+                firstname=existing_profile.firstname,
+                lastname=existing_profile.lastname,
+                bio=existing_profile.bio
             )
 
+        # Create new profile
         new_profile = Profile(
             user_id=user_id,
             firstname=profile.firstname,
             lastname=profile.lastname,
-            bio=profile.bio,
+            bio=profile.bio
         )
 
         db.add(new_profile)
-        db.commit()
-        db.refresh(new_profile)
 
-        return new_profile
+        try:
+            db.commit()
+            db.refresh(new_profile)
+            logger.info(f"Profile created successfully for user ID: {user_id}")
+
+            # Convert new profile to ProfileRead
+            return ProfileRead(
+                id=str(new_profile.id),
+                user_id=str(new_profile.user_id),
+                firstname=new_profile.firstname,
+                lastname=new_profile.lastname,
+                bio=new_profile.bio
+            )
+
+        except IntegrityError as ie:
+            db.rollback()
+            logger.error(f"Database integrity error during profile creation: {str(ie)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Error creating profile"
+            )
+
     except UserValidationError as ve:
         logger.error(f"Validation error: {str(ve)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=ve.errors(),
+            detail=str(ve),
         )
+
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
+        logger.error(f"Unexpected error during profile creation: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+            detail=f"An unexpected error occurred: {str(e)}",
         )
 
 
 from sqlalchemy.orm import joinedload
 
 
-@guest_router.get("/me", response_model=UserRead)
+@user_router.get("/me", response_model=UserRead)
 async def get_user(user: user_dependency, db: db_dependency) -> UserRead:
     try:
         if not user:
@@ -373,7 +410,7 @@ async def get_user(user: user_dependency, db: db_dependency) -> UserRead:
         )
 
 
-@guest_router.put("/update-profile", response_model=ProfileRead)
+@user_router.put("/update-profile", response_model=ProfileRead)
 async def update_user_profile(
     user: user_dependency, db: db_dependency, profile_update: ProfileUpdate
 ):
