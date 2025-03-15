@@ -9,6 +9,7 @@ from app.dependencies import db_dependency, user_dependency
 from app.models import Goal
 from fastapi import WebSocket, WebSocketDisconnect
 from uuid import UUID
+
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -115,7 +116,7 @@ async def create_goal(
 
 @router.get("/allgoals", response_model=List[GoalRead])
 async def get_all_goals(
-    db: db_dependency, user: user_dependency,offset: int = 0,limit: int = 10
+    db: db_dependency, user: user_dependency, offset: int = 0, limit: int = 10
 ) -> List[GoalRead]:
     """
     Retrieve all goals for the authenticated user.
@@ -136,7 +137,14 @@ async def get_all_goals(
         user_id = validate_user(user)
 
         # Retrieve all goals for the user
-        result = db.query(Goal).filter(Goal.user_id == user_id).limit(limit).offset(offset).all()
+        result = (
+            db.query(Goal)
+            .filter(Goal.user_id == user_id)
+            .order_by(Goal.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
 
         # Check for empty result set
         if not result:
@@ -337,4 +345,3 @@ async def delete_goal(goal_id: UUID, db: db_dependency, user: user_dependency):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred",
         )
-

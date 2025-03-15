@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 
 # In-memory token tracking (for demonstration, replace with a more robust solution in production)
 USED_TOKENS: dict[str, datetime] = {}
@@ -208,7 +208,7 @@ async def create_access_token(username: str, user_id, plan_id: int = None):
         logger.error(f"Token generation error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Token generation error: {str(e)}"
+            detail=f"Token generation error: {str(e)}",
         ) from e
 
 
@@ -235,8 +235,7 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
 
 
 async def create_access_token_for_qrcode(
-    data: Dict[str, Any],
-    expires_delta: Optional[timedelta] = None
+    data: Dict[str, Any], expires_delta: Optional[timedelta] = None
 ) -> str:
     """
     Create an access token for QR code access with proper UUID handling.
@@ -273,7 +272,7 @@ async def create_access_token_for_qrcode(
         logger.error(f"Token generation error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate access token"
+            detail="Failed to generate access token",
         )
 
 

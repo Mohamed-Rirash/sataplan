@@ -161,6 +161,7 @@ async def login(
             password=form_data.password,
             db=db,
         )
+        logger.debug(f"User authenticated: {user.username}")
 
         if not user:
             logger.warning(f"Failed login attempt: {form_data.username}")
@@ -319,6 +320,11 @@ async def create_profile(
             lastname=profile.lastname,
             bio=profile.bio
         )
+
+        # Update the user's is_first_login column to False
+        user = db.query(User).filter(User.id == user_id).first()
+        user.is_first_login = False
+        db.add(user)
 
         db.add(new_profile)
 

@@ -8,6 +8,8 @@ from fastapi import HTTPException, status
 from app.models.goals import Goal
 from app.schemas.goals import GoalUpdate, GoalRead
 
+# from app.models import Goal  # Ensure Goal is imported
+
 
 async def read_all_goals(db: Session, user_id: int) -> list:
     """
@@ -137,10 +139,6 @@ async def delete_goal(goal_id: int, user_id: int, db: Session) -> bool:
     except SQLAlchemyError as e:
         db.rollback()
         raise e
-
-
-from sqlalchemy.orm import Session
-from app.models import Goal  # Ensure Goal is imported
 
 
 async def get_goal_by_id(db: Session, goal_id: int):
