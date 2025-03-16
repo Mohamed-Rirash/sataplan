@@ -1,6 +1,6 @@
 from enum import Enum
 
 
-class StatusEnum(str, Enum):
+class Status(str, Enum):
     ACTIVE = "ACTIVE"
     ACHIEVED = "ACHIEVED"
