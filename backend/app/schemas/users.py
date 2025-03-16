@@ -1,7 +1,8 @@
-from typing import Optional
-from pydantic import BaseModel, EmailStr, validator, Field
 import re
+from typing import Optional
 from uuid import UUID
+
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class UserBase(BaseModel):
@@ -14,7 +15,7 @@ class UserBase(BaseModel):
     )
     email: EmailStr = Field(..., description="A valid email address")
 
-    @validator("username")
+    @field_validator("username")
     def validate_username(cls, username):
         """
         Additional username validation
@@ -36,7 +37,7 @@ class UserCreate(UserBase):
         description="Password must be 8-64 characters long",
     )
 
-    @validator("password")
+    @field_validator("password")
     def validate_password_strength(cls, password):
         """
         Comprehensive password strength validation
@@ -75,7 +76,7 @@ class UserCreate(UserBase):
 
         return password
 
-    @validator("email")
+    @field_validator("email")
     def validate_email(cls, email):
         """
         Additional email validation
@@ -150,6 +151,6 @@ class ProfileRead(ProfileCreate):
             UUID: str  # Convert UUID to string during JSON serialization
         }
 
-    @validator('id', 'user_id', pre=True)
+    @field_validator("id", "user_id", mode="before")
     def convert_uuid_to_str(cls, v):
         return str(v) if isinstance(v, UUID) else v

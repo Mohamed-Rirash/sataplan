@@ -3,6 +3,8 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+import alembic_postgresql_enum
+
 
 from app.config import DATABASE_URL
 from app.db import Base
@@ -11,7 +13,7 @@ from app.db import Base
 from app.models.users import User, Profile
 from app.models.goals import Goal
 from app.models.motivations import Motivation
- 
+
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL is not set")
 

@@ -81,7 +81,11 @@ async def create_goal(
 
         # Create the goal
         goal = Goal(
-            name=data.name, description=data.description, user_id=user_id
+            name=data.name,
+            description=data.description,
+            user_id=user_id,
+            status=data.status,
+            due_date=data.due_date,
         )
         db.add(goal)
         db.commit()
@@ -263,6 +267,8 @@ async def update_goal(
         # Update goal attributes
         goal.name = data.name
         goal.description = data.description
+        goal.status = data.status
+        goal.due_date = data.due_date
 
         db.commit()
         db.refresh(goal)

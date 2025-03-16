@@ -1,10 +1,7 @@
-from uuid import UUID
-from pydantic import BaseModel, Field, HttpUrl
 from typing import Optional
+from uuid import UUID
 
-
-
-from pydantic import model_validator
+from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 
 class MotivationCreate(BaseModel):

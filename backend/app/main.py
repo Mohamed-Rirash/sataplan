@@ -45,7 +45,7 @@ app.add_middleware(
 versioned_router = APIRouter(prefix=f"/api/{API_VERSION}")
 
 
-@versioned_router.get("/health")
+@app.get("/")
 async def health():
     return {"message": "Healthy"}
 
