@@ -16,7 +16,7 @@ SUPPORTED_IMAGE_FORMATS = {
 
 app = FastAPI()
 
-BUCKET = "cover-images.12"
+BUCKET = "cover-images"
 
 
 async def supabase_upload_signed(

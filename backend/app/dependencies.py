@@ -2,7 +2,7 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 from typing import Annotated, Iterator
 
-from app.db import LocalSession, engine
+from .db import get_db as get_db_session
 from app.models.users import Base
 from app.services.security import get_current_user
 
@@ -14,24 +14,29 @@ from sqlalchemy.orm import Session
 
 
 # Create all tables if they don't exist
-Base.metadata.create_all(bind=engine)
+# Base.metadata.create_all(bind=engine)
 
 
+# Database dependency
 def get_db() -> Iterator[Session]:
     """
     Dependency that creates a new database session for each request
     and closes it after the request is complete.
     """
-    db = LocalSession()
+    db_generator = get_db_session()
     try:
+        db = next(db_generator)
         yield db
     finally:
-        db.close()
-
+        try:
+            next(db_generator)
+        except StopIteration:
+            pass
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
 
+# User dependency
 user_dependency = Annotated[dict, Depends(get_current_user)]
 
 

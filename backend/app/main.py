@@ -1,10 +1,29 @@
+import time
+import logging
+import sys
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRouter
 
+# Configure logging at the start
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger("startup_performance")
+
+# Record startup time
+startup_start = time.time()
+
 from app.config import CORS_ALLOW_ORIGINS
 from app.routes import auth, goals, motivations, qrcode, search
+
+logger.info(f"Startup imports completed in {time.time() - startup_start:.2f} seconds")
+startup_start = time.time()  # Reset for next measurement
 
 # Define API version
 API_VERSION = "v1"
@@ -72,3 +91,5 @@ versioned_router.include_router(
 
 # Include the versioned router in the main app
 app.include_router(versioned_router)
+
+logger.info(f"Total FastAPI app initialization took {time.time() - startup_start:.2f} seconds")
