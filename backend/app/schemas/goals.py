@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field, FutureDate
+from pydantic import BaseModel, Field, FutureDate, HttpUrl
 
 from app.utils.goal import Status
 
@@ -32,6 +32,7 @@ class GoalRead(GoalBase):
     created_at: datetime
     status: Status
     due_date: datetime
+    cover_image: str
 
     class Config:
         from_attributes = True

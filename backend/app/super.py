@@ -1,8 +1,6 @@
 import uuid
-from fastapi import UploadFile, File, HTTPException, status, FastAPI
-from app.config import (
-    supabase,
-)  # Import your Supabase client and bucket name
+from fastapi import UploadFile, File, HTTPException, FastAPI
+from app.config import supabase  # Import your Supabase client
 import magic
 
 KB = 1024
@@ -23,14 +21,13 @@ async def supabase_upload_signed(
     content: bytes, filename: str, content_type: str
 ):
     """
-    Uploads a file to Supabase Storage using a signed URL.
+    Uploads a file to Supabase Storage using a signed URL and returns the public URL.
     """
     # Step 1: Create a signed upload URL
     signed_url_response = supabase.storage.from_(
         BUCKET
-    ).create_signed_upload_url(
-        path=filename,
-    )
+    ).create_signed_upload_url(path=filename)
+
     if not signed_url_response or "token" not in signed_url_response:
         raise HTTPException(
             status_code=500, detail="Failed to generate signed URL"
@@ -42,36 +39,36 @@ async def supabase_upload_signed(
     response = supabase.storage.from_(BUCKET).upload_to_signed_url(
         path=filename,
         token=token,
-        file=content,
-        options={
-            "content-type": content_type,
-            "cache-control": "3600",
-            "upsert": "false",
-        },
+        file=content,  # Only required parameters
     )
-    return response
+
+    if not response:
+        raise HTTPException(status_code=500, detail="Failed to upload file")
+
+    # Step 3: Generate the public URL
+    public_url = supabase.storage.from_(BUCKET).get_public_url(path=filename)
+
+    return public_url
 
 
-@app.post("/upload-profile-image")
-async def upload_profile_image(profile_image: UploadFile = File(...)):
+@app.post("/upload-cover-image")
+async def upload_cover_image(cover_image: UploadFile = File(...)):
     """
-    Uploads a profile image to Supabase Storage using a signed URL.
+    Uploads a cover image to Supabase Storage and returns the public URL.
     """
-    if not profile_image:
-        raise HTTPException(status_code=400, detail="No profile image provided")
+    if not cover_image:
+        raise HTTPException(status_code=400, detail="No cover image provided")
 
     # Read the file content
-    content = await profile_image.read()
+    content = await cover_image.read()
     size = len(content)
 
-    # Validate file size
-    if size > 1 * MB:
-        raise HTTPException(
-            status_code=400, detail="Profile image is too large"
-        )
+    # Validate file size (Max 5MB)
+    if size > 5 * MB:
+        raise HTTPException(status_code=400, detail="Cover image is too large")
 
     # Validate file format
-    format = profile_image.content_type
+    format = cover_image.content_type
     if format not in SUPPORTED_IMAGE_FORMATS:
         raise HTTPException(status_code=400, detail="Unsupported image format")
 
@@ -82,14 +79,15 @@ async def upload_profile_image(profile_image: UploadFile = File(...)):
 
     # Generate a unique filename
     file_extension = SUPPORTED_IMAGE_FORMATS[format]
-    filename = f"profile-images/{uuid.uuid4()}.{file_extension}"
+    filename = f"{uuid.uuid4()}.{file_extension}"
 
-    # Upload to Supabase Storage using a signed URL
-    await supabase_upload_signed(
+    # Upload to Supabase Storage and get the URL
+    public_url = await supabase_upload_signed(
         content=content, filename=filename, content_type=format
     )
 
     return {
-        "message": "Profile image uploaded successfully",
+        "message": "Cover image uploaded successfully",
         "filename": filename,
+        "url": public_url,  # Returning the public URL
     }

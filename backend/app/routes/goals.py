@@ -1,14 +1,17 @@
-from typing import List, Optional
 import logging
+from datetime import datetime
+from typing import Annotated, List, Optional
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.schemas.goals import GoalCreate, GoalRead, GoalUpdate
 from app.dependencies import db_dependency, user_dependency
 from app.models import Goal
-from fastapi import WebSocket, WebSocketDisconnect
-from uuid import UUID
+from app.schemas.goals import GoalRead, GoalUpdate
+from app.services.uploadimg import Uploader
+from app.utils.goal import Status
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -62,59 +65,166 @@ def validate_user(user: Optional[dict]) -> int:
     return user_id
 
 
+# @router.post("/add", status_code=status.HTTP_201_CREATED)
+# async def create_goal(
+#     data: GoalCreate,
+#     db: db_dependency,
+#     user: user_dependency,
+#     cover_image: UploadFile = File(...),
+# ) -> dict:
+#     """
+#     Create a new goal for the authenticated user.
+#     ...
+#     """
+#     goal = None  # Initialize goal to None
+#     try:
+#         # Validate user and get user ID
+#         user_id = validate_user(user)
+#         content = await cover_image.read()
+
+#         image_url = upload_image(image=content)
+
+#         # Validate goal data
+#         if not data.name or not data.description:
+#             raise ValidationError("goal name and description are required")
+
+#         # Create the goal
+#         goal = Goal(
+#             name=data.name,
+#             description=data.description,
+#             user_id=user_id,
+#             status=data.status,
+#             due_date=data.due_date,
+#             cover_image=image_url,
+#         )
+#         db.add(goal)
+#         db.commit()
+#         db.refresh(goal)
+
+#         logger.info(
+#             f"goal created successfully. ID: {goal.id}, User ID: {user_id}"
+#         )
+#         return {"message": "goal created successfully", "goal_id": goal.id}
+
+#     except (ValidationError, AuthorizationError) as e:
+#         raise e
+
+#     except SQLAlchemyError as e:
+#         db.rollback()
+#         logger.error(f"Database error during goal creation: {str(e)}")
+#         raise ValidationError(f"Database error: {str(e)}")
+
+#     except Exception as e:
+#         db.rollback()
+#         if goal is not None:
+#             logger.error(f"Unexpected error during goal creation: {str(e)}")
+#         else:
+#             logger.error(
+#                 "Unexpected error during goal creation: goal was not created"
+#             )
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="An unexpected error occurred",
+#         )
+
+
+KB = 1024
+MB = 1024 * KB
+
+SUPPORTED_IMAGE_FORMATS = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+}
+
+
 @router.post("/add", status_code=status.HTTP_201_CREATED)
 async def create_goal(
-    data: GoalCreate, db: db_dependency, user: user_dependency
+    db: db_dependency,
+    user: user_dependency,
+    name: Annotated[str, Form(...)],
+    description: Annotated[str, Form(...)],
+    status: Annotated[str, Form(...)],
+    due_date: Annotated[
+        Optional[str], Form(...)
+    ],  # Receive as string and parse
+    cover_image: UploadFile = File(...),
 ) -> dict:
     """
     Create a new goal for the authenticated user.
-    ...
     """
-    goal = None  # Initialize goal to None
     try:
         # Validate user and get user ID
         user_id = validate_user(user)
 
-        # Validate goal data
-        if not data.name or not data.description:
-            raise ValidationError("goal name and description are required")
+        image_url = await Uploader(
+            cover_image
+        )  # **Manually validate fields similar to Pydantic**
+        if len(name) > 80:
+            raise HTTPException(
+                status_code=422,
+                detail="Goal name must be at most 80 characters long.",
+            )
+
+        if not description:
+            raise HTTPException(
+                status_code=422, detail="Goal description is required."
+            )
+
+        if (
+            status not in Status.__members__
+        ):  # Validate `status` is a valid enum value
+            raise HTTPException(
+                status_code=422, detail=f"Invalid status value: {status}"
+            )
+
+        # Parse and validate `due_date`
+        parsed_due_date = None
+        if due_date:
+            try:
+                parsed_due_date = datetime.fromisoformat(due_date)
+                if parsed_due_date < datetime.now():
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Due date must be in the future.",
+                    )
+            except ValueError:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Invalid due date format. Use YYYY-MM-DD.",
+                )
 
         # Create the goal
         goal = Goal(
-            name=data.name,
-            description=data.description,
+            name=name,
+            description=description,
             user_id=user_id,
-            status=data.status,
-            due_date=data.due_date,
+            status=status,
+            due_date=parsed_due_date,
+            cover_image=image_url,
         )
         db.add(goal)
         db.commit()
         db.refresh(goal)
 
         logger.info(
-            f"goal created successfully. ID: {goal.id}, User ID: {user_id}"
+            f"Goal created successfully. ID: {goal.id}, User ID: {user_id}"
         )
-        return {"message": "goal created successfully", "goal_id": goal.id}
+        return {"message": "Goal created successfully", "goal_id": goal.id}
 
-    except (ValidationError, AuthorizationError) as e:
-        raise e
+    except HTTPException as e:
+        raise e  # Return validation errors
 
     except SQLAlchemyError as e:
         db.rollback()
         logger.error(f"Database error during goal creation: {str(e)}")
-        raise ValidationError(f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Database error occurred.")
 
     except Exception as e:
         db.rollback()
-        if goal is not None:
-            logger.error(f"Unexpected error during goal creation: {str(e)}")
-        else:
-            logger.error(
-                "Unexpected error during goal creation: goal was not created"
-            )
+        logger.error(f"Unexpected error: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+            status_code=500, detail="An unexpected error occurred."
         )
 
 

@@ -12,6 +12,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+from sqlalchemy_utils import URLType
 
 from app.db import Base
 from app.utils.goal import Status
@@ -27,6 +28,7 @@ class Goal(Base):
     description = Column(String, index=True)
     status = Column(Enum(Status), nullable=False)
     due_date = Column(Date, nullable=False)
+    cover_image = Column(URLType, index=True, nullable=False)
 
     user_id = Column(
         UUID(as_uuid=True),
