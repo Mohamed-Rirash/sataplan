@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRouter
+from app.config import CORS_ALLOW_ORIGINS
 
 # Configure logging at the start
 logging.basicConfig(
@@ -19,7 +20,7 @@ logger = logging.getLogger("startup_performance")
 # Record startup time
 startup_start = time.time()
 
-from app.config import CORS_ALLOW_ORIGINS
+
 from app.routes import auth, goals, motivations, qrcode, search
 
 logger.info(f"Startup imports completed in {time.time() - startup_start:.2f} seconds")
@@ -51,7 +52,7 @@ app.add_middleware(
     minimum_size=100,
 )
 
-origins = ["http://localhost:5173", CORS_ALLOW_ORIGINS]
+origins = [CORS_ALLOW_ORIGINS, "http://localhost:5173"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
