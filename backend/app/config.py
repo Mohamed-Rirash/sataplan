@@ -15,4 +15,18 @@ KEY = os.getenv("KEY")
 BUCKET = os.getenv("BUCKET")
 
 
+def get_cors_origins():
+    """
+    Parse CORS origins from environment variable.
+    Supports comma-separated list of origins.
+    """
+    cors_origins = os.getenv("CORS_ALLOW_ORIGINS", "").split(",")
+    # Add localhost for development if not already present
+    if "http://localhost:5173" not in cors_origins:
+        cors_origins.append("http://localhost:5173")
+
+    # Remove any empty strings
+    return [origin.strip() for origin in cors_origins if origin.strip()]
+
+
 supabase: Client = create_client(URL, KEY)
