@@ -113,13 +113,15 @@ async def add_motivation(
         # Verify the Goal exists and belongs to the user
         goal = await read_goal_by_id(goal_id, user_id, db)
 
-        #check if link is already exists for this goal
-        if data.link:
-            if db.query(Motivation).filter(Motivation.link == str(data.link)).first():
-                raise ValidationError("Motivation link already exists for this goal")
-        #check if the exact qout exist for this goal
+        # check if link is already exists for this goal
+        # if data.link:
+        #     if db.query(Motivation).filter(Motivation.link == str(data.link)).first():
+        #         raise ValidationError("Motivation link already exists for this goal")
+        # check if the exact qout exist for this goal
         if db.query(Motivation).filter(Motivation.quote == data.quote).first():
-            raise ValidationError("Motivation quote already exists for this goal")
+            raise ValidationError(
+                "Motivation quote already exists for this goal"
+            )
 
         # Create motivation
         motivation = Motivation(
@@ -258,7 +260,7 @@ async def delete_motivation(
             )
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Motivation with ID {motivation_id} not found or not authorized"
+                detail=f"Motivation with ID {motivation_id} not found or not authorized",
             )
 
         # Delete the motivation
@@ -277,7 +279,7 @@ async def delete_motivation(
             )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Database error occurred while deleting motivation"
+                detail="Database error occurred while deleting motivation",
             )
 
     except (ValidationError, AuthorizationError) as auth_error:
@@ -287,5 +289,5 @@ async def delete_motivation(
         logger.error(f"Unexpected error during motivation deletion: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred during motivation deletion"
+            detail="An unexpected error occurred during motivation deletion",
         )

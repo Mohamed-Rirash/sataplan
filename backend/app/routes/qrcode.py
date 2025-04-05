@@ -1,5 +1,6 @@
 import datetime
 import logging
+import re
 import secrets
 from typing import Any, Dict, Optional
 
@@ -15,6 +16,7 @@ from app.crud.users import (
     get_user_pass_by_id,
 )
 from app.dependencies import db_dependency, user_dependency
+from app.schemas.goals import GoalRead
 from app.services.qrcode import generate_qrcode
 from app.services.security import (
     create_access_token_for_qrcode,
@@ -82,7 +84,7 @@ router = APIRouter(
 
 @router.get("/generate-permanent-qr/{goal_id}")
 async def generate_permanent_qrcode(
-    user: user_dependency,db: db_dependency, goal_id: UUID
+    user: user_dependency, db: db_dependency, goal_id: UUID
 ):
     """
     Generate a permanent QR code for a specific goal with a unique password.
@@ -128,7 +130,9 @@ async def generate_permanent_qrcode(
             )
 
         # Generate a secure, random password for this goal
-        goal_password = secrets.token_urlsafe(8)  # 8 characters of URL-safe random bytes
+        goal_password = secrets.token_urlsafe(
+            8
+        )  # 8 characters of URL-safe random bytes
 
         # Store the goal password with additional context
         goal_PASSWORDS[goal_id] = {
@@ -156,11 +160,15 @@ async def generate_permanent_qrcode(
 
     except ValidationError as e:
         logger.error(f"Validation error: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        )
 
     except AuthorizationError as e:
         logger.error(f"Authorization error: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)
+        )
 
     except Exception as e:
         logger.error(f"Unexpected error generating QR code: {str(e)}")
@@ -198,7 +206,9 @@ async def verify_goal_access(goal_id: UUID, password: str, db: db_dependency):
 
         # Get user ID associated with the goal
         user_id = await get_user_id_by_goal_id(goal.id, db)
-        logger.info(f"Verifying goal access. goal ID: {goal_id}, User ID: {user_id}")
+        logger.info(
+            f"Verifying goal access. goal ID: {goal_id}, User ID: {user_id}"
+        )
 
         # Get user's hashed password
         hashed_password = await get_user_pass_by_id(user_id, db)
@@ -214,7 +224,6 @@ async def verify_goal_access(goal_id: UUID, password: str, db: db_dependency):
                 "goal_id": goal_id,
                 "user_id": user_id,
                 "type": "permanent_qr_access",
-
             },
             expires_delta=datetime.timedelta(minutes=15),  # Short-lived access
         )
@@ -225,11 +234,15 @@ async def verify_goal_access(goal_id: UUID, password: str, db: db_dependency):
 
     except ValidationError as e:
         logger.error(f"Validation error: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        )
 
     except AuthorizationError as e:
         logger.error(f"Authorization error: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)
+        )
 
     except Exception as e:
         logger.error(f"Unexpected error verifying goal access: {str(e)}")
@@ -284,6 +297,8 @@ async def view_goal(
                 "goal_details": {
                     "name": goal_details.name,
                     "description": goal_details.description,
+                    "status": goal_details.status,
+                    "due_date": goal_details.due_date.isoformat(),
                     "motivations": [
                         {
                             "id": motivation.id.hex,  # Convert UUID to hex string
@@ -303,7 +318,7 @@ async def view_goal(
             content={
                 "error": "Access Denied",
                 "message": str(e.detail),
-                "code": "TOKEN_ERROR"
+                "code": "TOKEN_ERROR",
             },
         )
 
