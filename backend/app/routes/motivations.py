@@ -114,7 +114,7 @@ async def add_motivation(
         goal = await read_goal_by_id(goal_id, user_id, db)
 
         # check if link is already exists for this goal
-        # if data.link:
+        a if data.link:
         #     if db.query(Motivation).filter(Motivation.link == str(data.link)).first():
         #         raise ValidationError("Motivation link already exists for this goal")
         # check if the exact qout exist for this goal
