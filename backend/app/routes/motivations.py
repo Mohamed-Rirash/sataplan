@@ -11,6 +11,8 @@ from app.models import Goal, Motivation
 from app.schemas.motivations import MotivationCreate
 
 from uuid import UUID
+from sqlalchemy import select, and_, or_, false
+import traceback
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -71,7 +73,7 @@ def get_user_goal(db, goal_id: int, user_id: int):
 
     Args:
         db: Database session
-        oalGoal_id (int): oalGoal ID
+        goal_id (int): Goal ID
         user_id (int): User ID
 
     Returns:
@@ -100,34 +102,119 @@ async def add_motivation(
 ):
     """
     Create a new motivation for a specific Goal.
-    ...
+
+    Args:
+        goal_id: UUID of the goal to associate with
+        data: Motivation data including quote and optional link
+
+    Returns:
+        JSON response with success message and motivation ID
+
+    Raises:
+        HTTPException: For authorization, validation, or server errors
     """
+    # Initialize variables for comprehensive logging
+    user_id = None
+
     try:
-        # Validate user and get user ID
+        # Debug log for input parameters
+        logger.debug(
+            "Starting motivation creation process",
+            extra={
+                "goal_id": str(goal_id),
+                "quote": data.quote,
+                "link": str(data.link) if data.link else "None",
+                "user": user
+            }
+        )
+
+        # Validate user and get user ID (atomic operation)
         user_id = validate_user(user)
+        logger.debug(
+            "User validated successfully",
+            extra={"user_id": user_id}
+        )
 
-        # Validate motivation data
-        # if not data.quote:
-        #     raise ValidationError("Motivation quote is required")
+        if not user_id:
+            logger.warning("User validation failed")
+            raise AuthorizationError("Invalid user credentials")
 
-        # Verify the Goal exists and belongs to the user
-        goal = await read_goal_by_id(goal_id, user_id, db)
+        # Verify goal existence and ownership in one query
+        goal = db.scalars(
+            select(Goal)
+            .where(and_(
+                Goal.id == goal_id,
+                Goal.user_id == user_id
+            ))
+            .limit(1)
+        ).first()
 
-        # check if link is already exists for this goal
-        a if data.link:
-        #     if db.query(Motivation).filter(Motivation.link == str(data.link)).first():
-        #         raise ValidationError("Motivation link already exists for this goal")
-        # check if the exact qout exist for this goal
-        if db.query(Motivation).filter(Motivation.quote == data.quote).first():
-            raise ValidationError(
-                "Motivation quote already exists for this goal"
+        if not goal:
+            logger.warning(
+                "Goal not found or access denied",
+                extra={
+                    "goal_id": str(goal_id),
+                    "user_id": user_id
+                }
             )
+            raise AuthorizationError("Goal not found or access denied")
 
-        # Create motivation
+        # Debug log for goal retrieval
+        logger.debug(
+            "Goal retrieved successfully",
+            extra={
+                "goal_id": str(goal.id),
+                "goal_user_id": goal.user_id
+            }
+        )
+
+        # Validate input data before processing
+        if not data.quote and not data.link:
+            logger.warning("No quote or link provided")
+            raise ValidationError("At least one of quote or link must be provided")
+
+        # Ensure link is converted to string safely
+        link_str = str(data.link) if data.link else None
+
+        # Combined existence check for both quote and link (single query)
+        existing = db.scalars(
+            select(Motivation)
+            .where(or_(
+                Motivation.quote == data.quote,
+                Motivation.link == link_str if link_str else false
+            ))
+            .limit(1)
+        ).first()
+
+        # Debug log for existing motivation check
+        logger.debug(
+            "Existing motivation check completed",
+            extra={
+                "existing_motivation": "True" if existing else "False",
+                "existing_quote": existing.quote if existing else "None",
+                "existing_link": existing.link if existing else "None"
+            }
+        )
+
+        if existing:
+            if existing.quote == data.quote:
+                logger.warning(
+                    "Motivation quote already exists",
+                    extra={"quote": data.quote}
+                )
+                raise ValidationError("Motivation quote already exists")
+            if link_str and existing.link == link_str:
+                logger.warning(
+                    "Motivation link already exists",
+                    extra={"link": link_str}
+                )
+                raise ValidationError("Motivation link already exists")
+
+        # Create and commit motivation (atomic operation)
         motivation = Motivation(
             quote=data.quote,
-            link=str(data.link) if data.link else None,
-            goal_id=goal.id,
+            link=link_str,
+            goal_id=goal.id
         )
 
         db.add(motivation)
@@ -135,28 +222,85 @@ async def add_motivation(
         db.refresh(motivation)
 
         logger.info(
-            f"Motivation created successfully. ID: {motivation.id}, Goal ID: {goal_id}"  # Fixed here
+            "Motivation created successfully",
+            extra={
+                "motivation_id": motivation.id,
+                "goal_id": goal_id,
+                "user_id": user_id
+            }
         )
+
         return {
             "message": "Motivation created successfully",
-            "motivation_id": motivation.id,
+            "motivation_id": str(motivation.id),  # Explicit string conversion
         }
 
-    except (ValidationError, AuthorizationError) as e:
-        raise e
+    except AuthorizationError as e:
+        logger.warning(
+            "Authorization failed for motivation creation",
+            extra={
+                "goal_id": goal_id,
+                "user_id": user_id,
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+
+    except ValidationError as e:
+        logger.warning(
+            "Validation failed for motivation creation",
+            extra={
+                "goal_id": goal_id,
+                "user_id": user_id,
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
     except SQLAlchemyError as e:
         db.rollback()
-        logger.error(f"Database error during motivation creation: {str(e)}")
-        raise ValidationError(f"Database error: {str(e)}")
+        logger.error(
+            "Database error during motivation creation",
+            extra={
+                "goal_id": goal_id,
+                "user_id": user_id,
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "traceback": traceback.format_exc()
+            }
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database operation failed"
+        )
 
     except Exception as e:
         db.rollback()
-        logger.error(f"Unexpected error during motivation creation: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+        logger.critical(
+            "Unexpected error during motivation creation",
+            extra={
+                "goal_id": goal_id,
+                "user_id": user_id,
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "traceback": traceback.format_exc(),
+                "user_data": str(user),
+                "input_data": {
+                    "quote": data.quote,
+                    "link": str(data.link) if data.link else None
+                }
+            }
         )
+        print("FULL TRACEBACK:", traceback.format_exc())
+        raise
 
 
 @router.get("/{goal_id}")
@@ -165,28 +309,40 @@ async def get_motivations_by_goal(
 ) -> dict:
     """
     Retrieve all motivations for a specific Goal.
-    ...
+
+    Args:
+        goal_id: UUID of the goal to retrieve motivations for
+        db: Database session
+        user: User authentication data
+
+    Returns:
+        JSON response with a list of motivations
+
+    Raises:
+        HTTPException: For authorization, validation, or server errors
     """
     try:
         # Validate user and get user ID
         user_id = validate_user(user)
 
         # Verify the Goal exists and belongs to the user
-        goal = await read_goal_by_id(goal_id, user_id, db)  # Change here
+        goal = await read_goal_by_id(goal_id, user_id, db)
 
         # Retrieve motivations for the Goal
         motivations = (
-            db.query(Motivation)
-            .options(
-                load_only(
-                    Motivation.id,
-                    Motivation.link,
-                    Motivation.quote,
-                    Motivation.goal_id,
+            db.scalars(
+                select(Motivation)
+                .join(Goal)
+                .where(Goal.id == goal_id, Goal.user_id == user_id)
+                .options(
+                    load_only(
+                        Motivation.id,
+                        Motivation.link,
+                        Motivation.quote,
+                        Motivation.goal_id,
+                    )
                 )
-            )
-            .filter(Motivation.goal_id == goal.id)  # Change here
-            .all()
+            ).all()
         )
 
         # Construct the response
@@ -195,8 +351,8 @@ async def get_motivations_by_goal(
                 "id": m.id,
                 "link": m.link,
                 "quote": m.quote,
-                "Goal_id": goal.id,
-            }  # Change here
+                "goal_id": goal.id,
+            }
             for m in motivations
         ]
 
