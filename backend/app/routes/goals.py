@@ -3,12 +3,14 @@ from datetime import datetime
 from typing import Annotated, List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile, status
 from pydantic import ValidationError
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import select, and_, func
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import selectinload, joinedload
 
 from app.dependencies import db_dependency, user_dependency
-from app.models import Goal
+from app.models import Goal, Motivation
 from app.schemas.goals import GoalRead, GoalUpdate
 from app.services.uploadimg import Uploader
 from app.utils.goal import Status
@@ -65,69 +67,6 @@ def validate_user(user: Optional[dict]) -> int:
     return user_id
 
 
-# @router.post("/add", status_code=status.HTTP_201_CREATED)
-# async def create_goal(
-#     data: GoalCreate,
-#     db: db_dependency,
-#     user: user_dependency,
-#     cover_image: UploadFile = File(...),
-# ) -> dict:
-#     """
-#     Create a new goal for the authenticated user.
-#     ...
-#     """
-#     goal = None  # Initialize goal to None
-#     try:
-#         # Validate user and get user ID
-#         user_id = validate_user(user)
-#         content = await cover_image.read()
-
-#         image_url = upload_image(image=content)
-
-#         # Validate goal data
-#         if not data.name or not data.description:
-#             raise ValidationError("goal name and description are required")
-
-#         # Create the goal
-#         goal = Goal(
-#             name=data.name,
-#             description=data.description,
-#             user_id=user_id,
-#             status=data.status,
-#             due_date=data.due_date,
-#             cover_image=image_url,
-#         )
-#         db.add(goal)
-#         db.commit()
-#         db.refresh(goal)
-
-#         logger.info(
-#             f"goal created successfully. ID: {goal.id}, User ID: {user_id}"
-#         )
-#         return {"message": "goal created successfully", "goal_id": goal.id}
-
-#     except (ValidationError, AuthorizationError) as e:
-#         raise e
-
-#     except SQLAlchemyError as e:
-#         db.rollback()
-#         logger.error(f"Database error during goal creation: {str(e)}")
-#         raise ValidationError(f"Database error: {str(e)}")
-
-#     except Exception as e:
-#         db.rollback()
-#         if goal is not None:
-#             logger.error(f"Unexpected error during goal creation: {str(e)}")
-#         else:
-#             logger.error(
-#                 "Unexpected error during goal creation: goal was not created"
-#             )
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail="An unexpected error occurred",
-#         )
-
-
 KB = 1024
 MB = 1024 * KB
 
@@ -138,63 +77,109 @@ SUPPORTED_IMAGE_FORMATS = {
 }
 
 
+async def async_upload_image(cover_image: UploadFile) -> str:
+    """
+    Asynchronously upload image to storage with robust error handling.
+
+    Args:
+        cover_image (UploadFile): Image file to upload
+
+    Returns:
+        str: URL of the uploaded image
+    """
+    try:
+        # Validate file presence
+        if not cover_image:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No cover image provided"
+            )
+
+        # Validate file size and type using existing Uploader logic
+        image_url = await Uploader(cover_image)
+
+        return image_url
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Image upload error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
 @router.post("/add", status_code=status.HTTP_201_CREATED)
 async def create_goal(
+    background_tasks: BackgroundTasks,
     db: db_dependency,
     user: user_dependency,
     name: Annotated[str, Form(...)],
     description: Annotated[str, Form(...)],
     status: Annotated[str, Form(...)],
-    due_date: Annotated[
-        Optional[str], Form(...)
-    ],  # Receive as string and parse
-    cover_image: UploadFile = File(...),
+    due_date: str = Form(None),
+    cover_image: UploadFile = File(...)
 ) -> dict:
     """
-    Create a new goal for the authenticated user.
+    Create a new goal with optimized image upload and database handling.
+
+    Args:
+        background_tasks (BackgroundTasks): FastAPI background tasks
+        db (db_dependency): Database session
+        user (user_dependency): Authenticated user
+        name (str): Goal name
+        description (str): Goal description
+        status (str): Goal status
+        due_date (Optional[str]): Goal due date
+        cover_image (UploadFile): Goal cover image
+
+    Returns:
+        dict: Goal creation response
     """
     try:
         # Validate user and get user ID
         user_id = validate_user(user)
 
-        image_url = await Uploader(
-            cover_image
-        )  # **Manually validate fields similar to Pydantic**
+        # Validate input data
         if len(name) > 80:
             raise HTTPException(
-                status_code=422,
-                detail="Goal name must be at most 80 characters long.",
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Goal name must be at most 80 characters long"
             )
 
         if not description:
             raise HTTPException(
-                status_code=422, detail="Goal description is required."
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Goal description is required"
             )
 
-        if (
-            status not in Status.__members__
-        ):  # Validate `status` is a valid enum value
+        if status not in Status.__members__:
             raise HTTPException(
-                status_code=422, detail=f"Invalid status value: {status}"
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid status value: {status}"
             )
 
-        # Parse and validate `due_date`
+        # Parse and validate due_date
         parsed_due_date = None
         if due_date:
             try:
                 parsed_due_date = datetime.fromisoformat(due_date)
                 if parsed_due_date < datetime.now():
                     raise HTTPException(
-                        status_code=422,
-                        detail="Due date must be in the future.",
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="Due date must be in the future"
                     )
             except ValueError:
                 raise HTTPException(
-                    status_code=422,
-                    detail="Invalid due date format. Use YYYY-MM-DD.",
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Invalid due date format. Use YYYY-MM-DD"
                 )
 
-        # Create the goal
+        # Upload image
+        image_url = await async_upload_image(cover_image)
+
+        # Create goal with efficient database operation
         goal = Goal(
             name=name,
             description=description,
@@ -203,76 +188,82 @@ async def create_goal(
             due_date=parsed_due_date,
             cover_image=image_url,
         )
-        db.add(goal)
-        db.commit()
-        db.refresh(goal)
+
+        # Use a single transaction for goal creation
+        try:
+            db.add(goal)
+            db.commit()
+            db.refresh(goal)
+        except IntegrityError as ie:
+            db.rollback()
+            logger.error(f"Database integrity error: {str(ie)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Goal creation failed due to data constraints"
+            )
 
         logger.info(
             f"Goal created successfully. ID: {goal.id}, User ID: {user_id}"
         )
         return {"message": "Goal created successfully", "goal_id": goal.id}
 
-    except HTTPException as e:
-        raise e  # Return validation errors
-
-    except SQLAlchemyError as e:
-        db.rollback()
-        logger.error(f"Database error during goal creation: {str(e)}")
-        raise HTTPException(status_code=500, detail="Database error occurred.")
-
+    except HTTPException:
+        raise
     except Exception as e:
-        db.rollback()
-        logger.error(f"Unexpected error: {str(e)}")
+        logger.error(f"Unexpected goal creation error: {str(e)}")
         raise HTTPException(
-            status_code=500, detail="An unexpected error occurred."
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred during goal creation"
         )
 
 
 @router.get("/allgoals", response_model=List[GoalRead])
 async def get_all_goals(
-    db: db_dependency, user: user_dependency, offset: int = 0, limit: int = 10
+    db: db_dependency,
+    user: user_dependency,
+    offset: int = 0,
+    limit: int = 10,
+    status: Optional[str] = None  # New optional filter
 ) -> List[GoalRead]:
     """
-    Retrieve all goals for the authenticated user.
+    Retrieve goals for the authenticated user with advanced filtering.
 
     Args:
         db (db_dependency): The database session.
         user (user_dependency): The authenticated user's information.
+        offset (int, optional): Pagination offset. Defaults to 0.
+        limit (int, optional): Number of goals to retrieve. Defaults to 10.
+        status (str, optional): Filter goals by status.
 
     Returns:
         List[GoalRead]: A list of goals belonging to the user.
 
     Raises:
         AuthorizationError: If the user is not authenticated
-        ValidationError: If no goals are found
     """
     try:
         # Validate user and get user ID
         user_id = validate_user(user)
 
-        # Retrieve all goals for the user
-        result = (
-            db.query(Goal)
-            .filter(Goal.user_id == user_id)
-            .order_by(Goal.created_at.desc())
-            .offset(offset)
-            .limit(limit)
-            .all()
-        )
+        # Build flexible query with optional filtering
+        query = select(Goal).where(Goal.user_id == user_id)
 
-        # Check for empty result set
-        if not result:
-            logger.info(f"No goals found for user ID: {user_id}")
-            return []
+        # Add optional status filter
+        if status and status in Status.__members__:
+            query = query.where(Goal.status == status)
 
+        # Apply ordering and pagination
+        query = query.order_by(Goal.created_at.desc()).offset(offset).limit(limit)
+
+        # Execute query efficiently
+        result = db.scalars(query).all()
+
+        # Log retrieval details
         logger.info(f"Retrieved {len(result)} goals for user ID: {user_id}")
         return list(result)
 
-    except (ValidationError, AuthorizationError) as e:
-        raise e
-
     except Exception as e:
-        logger.error(f"Unexpected error retrieving goals: {str(e)}")
+        logger.error(f"Error retrieving goals: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error retrieving goals",
@@ -281,13 +272,15 @@ async def get_all_goals(
 
 @router.get("/goal/{goal_id}", response_model=GoalRead)
 async def get_goal(
-    goal_id: UUID, db: db_dependency, user: user_dependency
+    goal_id: UUID,
+    db: db_dependency,
+    user: user_dependency
 ) -> GoalRead:
     """
     Retrieve a specific goal by its ID for the authenticated user.
 
     Args:
-        goal_id (int): The ID of the goal to retrieve.
+        goal_id (UUID): The ID of the goal to retrieve.
         db (db_dependency): The database session.
         user (user_dependency): The authenticated user's information.
 
@@ -295,51 +288,50 @@ async def get_goal(
         GoalRead: The requested goal.
 
     Raises:
-        AuthorizationError: If the user is not authenticated
-        ValidationError: If the goal is not found
+        HTTPException: If goal is not found or user is unauthorized
     """
     try:
         # Validate user and get user ID
         user_id = validate_user(user)
 
-        # Retrieve the specific goal for the user
-        result = (
-            db.query(Goal)
-            .filter(Goal.id == goal_id, Goal.user_id == user_id)
-            .first()
+        # Fetch the goal
+        goal_query = select(Goal).where(
+            and_(Goal.id == goal_id, Goal.user_id == user_id)
         )
+        goal = db.scalar(goal_query)
 
-        if not result:
-            logger.warning(
-                f"goal not found. goal ID: {goal_id}, User ID: {user_id}"
+        # Check if goal exists
+        if not goal:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Goal not found"
             )
-            raise ValidationError(
-                f"goal with ID {goal_id} not found for this user"
-            )
 
-        logger.info(f"Retrieved goal. goal ID: {goal_id}, User ID: {user_id}")
-        return result
+        logger.info(f"Retrieved goal: {goal_id} for user: {user_id}")
+        return goal
 
-    except (ValidationError, AuthorizationError) as e:
-        raise e
-
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Unexpected error retrieving goal: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error retrieving goal",
+            detail="Error retrieving goal"
         )
 
 
 @router.patch("/update/{goal_id}", response_model=GoalRead)
 async def update_goal(
-    goal_id: UUID, data: GoalUpdate, db: db_dependency, user: user_dependency
+    goal_id: UUID,
+    data: GoalUpdate,
+    db: db_dependency,
+    user: user_dependency
 ) -> GoalRead:
     """
     Update an existing goal for the authenticated user.
 
     Args:
-        goal_id (int): The ID of the goal to update.
+        goal_id (UUID): The ID of the goal to update.
         data (GoalUpdate): The updated goal data.
         db (db_dependency): The database session.
         user (user_dependency): The authenticated user's information.
@@ -348,65 +340,86 @@ async def update_goal(
         GoalRead: The updated goal.
 
     Raises:
-        AuthorizationError: If the user is not authenticated
-        ValidationError: If the goal data is invalid or goal not found
+        HTTPException: For validation or authorization errors
     """
     try:
         # Validate user and get user ID
         user_id = validate_user(user)
 
-        # Validate goal data
-        if not data.name or not data.description:
-            raise ValidationError("goal name and description are required")
+        # Validate input data
+        if not data.name or len(data.name) > 80:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Goal name is required and must be at most 80 characters"
+            )
 
-        # Attempt to update the goal
-        goal = (
-            db.query(Goal)
-            .filter(Goal.id == goal_id, Goal.user_id == user_id)
-            .first()
+        if not data.description:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Goal description is required"
+            )
+
+        # Find the goal with a single, efficient query
+        query = select(Goal).where(
+            and_(Goal.id == goal_id, Goal.user_id == user_id)
         )
+        goal = db.scalars(query).first()
 
         if not goal:
             logger.warning(
-                f"goal not found for update. goal ID: {goal_id}, User ID: {user_id}"
+                f"Goal not found for update. Goal ID: {goal_id}, User ID: {user_id}"
             )
-            raise ValidationError(
-                f"goal with ID {goal_id} not found for this user"
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Goal with ID {goal_id} not found"
+            )
+
+        # Validate status if provided
+        if data.status and data.status not in Status.__members__:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid status: {data.status}"
             )
 
         # Update goal attributes
         goal.name = data.name
         goal.description = data.description
-        goal.status = data.status
-        goal.due_date = data.due_date
+        goal.status = data.status or goal.status
+        goal.due_date = data.due_date or goal.due_date
 
+        # Commit changes
         db.commit()
         db.refresh(goal)
 
         logger.info(
-            f"goal updated successfully. goal ID: {goal_id}, User ID: {user_id}"
+            f"Goal updated successfully. Goal ID: {goal_id}, User ID: {user_id}"
         )
         return goal
 
-    except (ValidationError, AuthorizationError) as e:
-        raise e
-
-    except SQLAlchemyError as e:
+    except HTTPException:
+        raise
+    except IntegrityError as ie:
         db.rollback()
-        logger.error(f"Database error during goal update: {str(e)}")
-        raise ValidationError(f"Database error: {str(e)}")
-
+        logger.error(f"Database integrity error: {str(ie)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid data provided"
+        )
     except Exception as e:
         db.rollback()
         logger.error(f"Unexpected error during goal update: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+            detail="An unexpected error occurred"
         )
 
 
 @router.delete("/delete/{goal_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_goal(goal_id: UUID, db: db_dependency, user: user_dependency):
+async def delete_goal(
+    goal_id: UUID,
+    db: db_dependency,
+    user: user_dependency
+):
     """
     Delete a goal for the authenticated user.
 
@@ -416,26 +429,25 @@ async def delete_goal(goal_id: UUID, db: db_dependency, user: user_dependency):
         user (user_dependency): The authenticated user's information.
 
     Raises:
-        AuthorizationError: If the user is not authenticated
-        ValidationError: If the goal is not found
+        HTTPException: For authorization or not found errors
     """
     try:
         # Validate user and get user ID
         user_id = validate_user(user)
 
-        # Check if goal exists and belongs to user
-        goal = (
-            db.query(Goal)
-            .filter(Goal.id == goal_id, Goal.user_id == user_id)
-            .first()
+        # Find the goal with a single, efficient query
+        query = select(Goal).where(
+            and_(Goal.id == goal_id, Goal.user_id == user_id)
         )
+        goal = db.scalars(query).first()
 
         if not goal:
             logger.warning(
-                f"goal not found for deletion. goal ID: {goal_id}, User ID: {user_id}"
+                f"Goal not found for deletion. Goal ID: {goal_id}, User ID: {user_id}"
             )
-            raise ValidationError(
-                f"goal with ID {goal_id} not found for this user"
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Goal with ID {goal_id} not found"
             )
 
         # Delete the goal
@@ -443,21 +455,22 @@ async def delete_goal(goal_id: UUID, db: db_dependency, user: user_dependency):
         db.commit()
 
         logger.info(
-            f"goal deleted successfully. goal ID: {goal_id}, User ID: {user_id}"
+            f"Goal deleted successfully. Goal ID: {goal_id}, User ID: {user_id}"
         )
 
-    except (ValidationError, AuthorizationError) as e:
-        raise e
-
-    except SQLAlchemyError as e:
+    except HTTPException:
+        raise
+    except IntegrityError as ie:
         db.rollback()
-        logger.error(f"Database error during goal deletion: {str(e)}")
-        raise ValidationError(f"Database error: {str(e)}")
-
+        logger.error(f"Database integrity error during deletion: {str(ie)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete goal due to existing dependencies"
+        )
     except Exception as e:
         db.rollback()
         logger.error(f"Unexpected error during goal deletion: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+            detail="An unexpected error occurred"
         )

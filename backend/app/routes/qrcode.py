@@ -299,7 +299,7 @@ async def view_goal(
                     "description": goal_details.description,
                     "status": goal_details.status,
                     "due_date": goal_details.due_date.isoformat(),
-                    "image": goal_details.image,
+                    "cover_image": goal_details.cover_image,
                     "motivations": [
                         {
                             "id": motivation.id.hex,  # Convert UUID to hex string

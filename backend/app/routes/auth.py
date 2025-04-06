@@ -4,7 +4,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import jwt
+from sqlalchemy import select, and_, or_
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.config import SECRET_KEY, ALGORITHM
 from app.dependencies import db_dependency, user_dependency
@@ -65,35 +67,36 @@ async def create_user(user: UserCreate, db: db_dependency) -> dict:
             - 500 for unexpected server errors
     """
     try:
-        # Use exists() instead of first() to avoid potential race conditions
-        username_exists = db.query(
-            db.query(User).filter(User.username == user.username).exists()
-        ).scalar()
-
-        email_exists = db.query(
-            db.query(User).filter(User.email == user.email).exists()
-        ).scalar()
-
-        if username_exists:
-            logger.warning(
-                f"Signup attempt with existing username: {user.username}"
+        # Optimize user existence check using a single query
+        existing_user_stmt = select(User).where(
+            or_(
+                User.username == user.username,
+                User.email == user.email
             )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username already exists",
-            )
+        )
+        existing_user = db.scalars(existing_user_stmt).first()
 
-        if email_exists:
-            logger.warning(f"Signup attempt with existing email: {user.email}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already exists",
-            )
+        if existing_user:
+            if existing_user.username == user.username:
+                logger.warning(
+                    f"Signup attempt with existing username: {user.username}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Username already exists",
+                )
+
+            if existing_user.email == user.email:
+                logger.warning(f"Signup attempt with existing email: {user.email}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Email already exists",
+                )
 
         # Hash the password before storing
         hashed_password = await hash_password(user.password)
 
-        # Create new user
+        # Create new user with optimized insertion
         created_user = User(
             username=user.username,
             email=user.email,
@@ -155,20 +158,26 @@ async def login(
     try:
         logger.info(f"Login attempt for: {form_data.username}")
 
+        # Use a single query to fetch user by username or email
+        user_stmt = select(User).where(
+            or_(
+                User.username == form_data.username,
+                User.email == form_data.username
+            )
+        )
+        user = db.scalars(user_stmt).first()
+
         # Authenticate user
-        user = await authenticate_user(
+        if not user or not await authenticate_user(
             username_or_email=form_data.username,
             password=form_data.password,
             db=db,
-        )
-        logger.debug(f"User authenticated: {user.username}")
-
-        if not user:
+        ):
             logger.warning(f"Failed login attempt: {form_data.username}")
             raise AuthenticationError("Invalid credentials")
 
-        # check if user is in active
-        if user.is_active == False:
+        # Check if user is active
+        if not user.is_active:
             logger.warning(f"Login attempt for inactive user: {user.username}")
             raise AuthenticationError("Account is not active")
 
@@ -211,7 +220,16 @@ async def refresh_token(refresh_token: str, db: db_dependency) -> TokenResponse:
     """
     try:
         # Decode and validate refresh token
-        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        try:
+            payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        except jwt.ExpiredSignatureError:
+            logger.warning("Expired refresh token")
+            raise AuthenticationError(
+                "Refresh token has expired. Please log in again."
+            )
+        except jwt.JWTError:
+            logger.warning("Invalid JWT token")
+            raise AuthenticationError("Invalid refresh token")
 
         username = payload.get("sub")
         user_id = payload.get("id")
@@ -220,8 +238,10 @@ async def refresh_token(refresh_token: str, db: db_dependency) -> TokenResponse:
             logger.warning("Invalid refresh token payload")
             raise AuthenticationError("Invalid refresh token")
 
-        # Verify user exists
-        user = db.query(User).filter(User.id == user_id).first()
+        # Fetch user with a single, efficient query
+        user_stmt = select(User).where(User.id == user_id, User.username == username)
+        user = db.scalars(user_stmt).first()
+
         if not user:
             logger.warning(f"Refresh token for non-existent user ID: {user_id}")
             raise AuthenticationError("User not found")
@@ -238,15 +258,8 @@ async def refresh_token(refresh_token: str, db: db_dependency) -> TokenResponse:
             token_type="bearer",
         )
 
-    except jwt.ExpiredSignatureError:
-        logger.warning("Expired refresh token")
-        raise AuthenticationError(
-            "Refresh token has expired. Please log in again."
-        )
-
-    except (jwt.JWTError, AuthenticationError) as token_error:
-        logger.error(f"Token validation error: {str(token_error)}")
-        raise AuthenticationError("Invalid refresh token")
+    except AuthenticationError as auth_error:
+        raise auth_error
 
     except Exception as e:
         logger.error(f"Unexpected error during token refresh: {str(e)}")
@@ -300,7 +313,8 @@ async def create_profile(
             )
 
         # Check if a profile already exists for this user
-        existing_profile = db.query(Profile).filter(Profile.user_id == user_id).first()
+        existing_profile_stmt = select(Profile).where(Profile.user_id == user_id)
+        existing_profile = db.scalars(existing_profile_stmt).first()
         if existing_profile:
             logger.info(f"Profile already exists for user ID: {user_id}. Returning existing profile.")
 
@@ -322,7 +336,8 @@ async def create_profile(
         )
 
         # Update the user's is_first_login column to False
-        user = db.query(User).filter(User.id == user_id).first()
+        user_stmt = select(User).where(User.id == user_id)
+        user = db.scalars(user_stmt).first()
         user.is_first_login = False
         db.add(user)
 
@@ -379,12 +394,8 @@ async def get_user(user: user_dependency, db: db_dependency) -> UserRead:
         logger.debug(f"Attempting to retrieve user with ID: {user_id}")
 
         # Fetch the user along with their associated profile
-        result = (
-            db.query(User)
-            .options(joinedload(User.profile))  # Eagerly load the profile
-            .filter(User.id == user_id)
-            .first()
-        )
+        user_stmt = select(User).options(joinedload(User.profile)).where(User.id == user_id)
+        result = db.scalars(user_stmt).first()
 
         if not result:
             logger.warning(f"User not found. User ID: {user_id}")
@@ -429,7 +440,8 @@ async def update_user_profile(
         logger.debug(f"User ID: {user_id}")
 
         # Fetch the user's profile
-        profile = db.query(Profile).filter(Profile.user_id == user_id).first()
+        profile_stmt = select(Profile).where(Profile.user_id == user_id)
+        profile = db.scalars(profile_stmt).first()
 
         if not profile:
             logger.warning(f"Profile not found for User ID: {user_id}")
