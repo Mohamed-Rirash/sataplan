@@ -8,7 +8,7 @@ from sqlalchemy_utils import URLType
 
 from app.db import Base
 
-if TYPE_CHECK:
+if TYPE_CHECKING:
     ...
 
 
