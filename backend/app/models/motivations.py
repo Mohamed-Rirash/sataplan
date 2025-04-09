@@ -8,15 +8,15 @@ from sqlalchemy_utils import URLType
 
 from app.db import Base
 
-if TYPE_CHECKING:
-    pass  # Import only during type checking
+if TYPE_CHECK:
+    ...
 
 
 class Motivation(Base):
     __tablename__ = "motivations"
 
     id = Column(
-        UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4
+        UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid
     )
 
     quote = Column(String(500), index=True, nullable=True, default=None)

@@ -124,16 +124,13 @@ async def add_motivation(
                 "goal_id": str(goal_id),
                 "quote": data.quote,
                 "link": str(data.link) if data.link else "None",
-                "user": user
-            }
+                "user": user,
+            },
         )
 
         # Validate user and get user ID (atomic operation)
         user_id = validate_user(user)
-        logger.debug(
-            "User validated successfully",
-            extra={"user_id": user_id}
-        )
+        logger.debug("User validated successfully", extra={"user_id": user_id})
 
         if not user_id:
             logger.warning("User validation failed")
@@ -142,36 +139,22 @@ async def add_motivation(
         # Verify goal existence and ownership in one query
         goal = db.scalars(
             select(Goal)
-            .where(and_(
-                Goal.id == goal_id,
-                Goal.user_id == user_id
-            ))
+            .where(and_(Goal.id == goal_id, Goal.user_id == user_id))
             .limit(1)
         ).first()
 
         if not goal:
             logger.warning(
                 "Goal not found or access denied",
-                extra={
-                    "goal_id": str(goal_id),
-                    "user_id": user_id
-                }
+                extra={"goal_id": str(goal_id), "user_id": user_id},
             )
             raise AuthorizationError("Goal not found or access denied")
 
         # Debug log for goal retrieval
         logger.debug(
             "Goal retrieved successfully",
-            extra={
-                "goal_id": str(goal.id),
-                "goal_user_id": goal.user_id
-            }
+            extra={"goal_id": str(goal.id), "goal_user_id": goal.user_id},
         )
-
-        # Validate input data before processing
-        if not data.quote and not data.link:
-            logger.warning("No quote or link provided")
-            raise ValidationError("At least one of quote or link must be provided")
 
         # Ensure link is converted to string safely
         link_str = str(data.link) if data.link else None
@@ -179,10 +162,12 @@ async def add_motivation(
         # Combined existence check for both quote and link (single query)
         existing = db.scalars(
             select(Motivation)
-            .where(or_(
-                Motivation.quote == data.quote,
-                Motivation.link == link_str if link_str else false
-            ))
+            .where(
+                or_(
+                    Motivation.quote == data.quote,
+                    Motivation.link == link_str if link_str else false,
+                )
+            )
             .limit(1)
         ).first()
 
@@ -192,29 +177,26 @@ async def add_motivation(
             extra={
                 "existing_motivation": "True" if existing else "False",
                 "existing_quote": existing.quote if existing else "None",
-                "existing_link": existing.link if existing else "None"
-            }
+                "existing_link": existing.link if existing else "None",
+            },
         )
 
         if existing:
             if existing.quote == data.quote:
                 logger.warning(
                     "Motivation quote already exists",
-                    extra={"quote": data.quote}
+                    extra={"quote": data.quote},
                 )
                 raise ValidationError("Motivation quote already exists")
             if link_str and existing.link == link_str:
                 logger.warning(
-                    "Motivation link already exists",
-                    extra={"link": link_str}
+                    "Motivation link already exists", extra={"link": link_str}
                 )
                 raise ValidationError("Motivation link already exists")
 
         # Create and commit motivation (atomic operation)
         motivation = Motivation(
-            quote=data.quote,
-            link=link_str,
-            goal_id=goal.id
+            quote=data.quote, link=link_str, goal_id=goal.id
         )
 
         db.add(motivation)
@@ -226,8 +208,8 @@ async def add_motivation(
             extra={
                 "motivation_id": motivation.id,
                 "goal_id": goal_id,
-                "user_id": user_id
-            }
+                "user_id": user_id,
+            },
         )
 
         return {
@@ -242,12 +224,11 @@ async def add_motivation(
                 "goal_id": goal_id,
                 "user_id": user_id,
                 "error": str(e),
-                "traceback": traceback.format_exc()
-            }
+                "traceback": traceback.format_exc(),
+            },
         )
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=str(e)
+            status_code=status.HTTP_403_FORBIDDEN, detail=str(e)
         )
 
     except ValidationError as e:
@@ -257,12 +238,11 @@ async def add_motivation(
                 "goal_id": goal_id,
                 "user_id": user_id,
                 "error": str(e),
-                "traceback": traceback.format_exc()
-            }
+                "traceback": traceback.format_exc(),
+            },
         )
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
         )
 
     except SQLAlchemyError as e:
@@ -274,12 +254,12 @@ async def add_motivation(
                 "user_id": user_id,
                 "error": str(e),
                 "error_type": type(e).__name__,
-                "traceback": traceback.format_exc()
-            }
+                "traceback": traceback.format_exc(),
+            },
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database operation failed"
+            detail="Database operation failed",
         )
 
     except Exception as e:
@@ -295,9 +275,9 @@ async def add_motivation(
                 "user_data": str(user),
                 "input_data": {
                     "quote": data.quote,
-                    "link": str(data.link) if data.link else None
-                }
-            }
+                    "link": str(data.link) if data.link else None,
+                },
+            },
         )
         print("FULL TRACEBACK:", traceback.format_exc())
         raise
@@ -329,21 +309,19 @@ async def get_motivations_by_goal(
         goal = await read_goal_by_id(goal_id, user_id, db)
 
         # Retrieve motivations for the Goal
-        motivations = (
-            db.scalars(
-                select(Motivation)
-                .join(Goal)
-                .where(Goal.id == goal_id, Goal.user_id == user_id)
-                .options(
-                    load_only(
-                        Motivation.id,
-                        Motivation.link,
-                        Motivation.quote,
-                        Motivation.goal_id,
-                    )
+        motivations = db.scalars(
+            select(Motivation)
+            .join(Goal)
+            .where(Goal.id == goal_id, Goal.user_id == user_id)
+            .options(
+                load_only(
+                    Motivation.id,
+                    Motivation.link,
+                    Motivation.quote,
+                    Motivation.goal_id,
                 )
-            ).all()
-        )
+            )
+        ).all()
 
         # Construct the response
         response = [

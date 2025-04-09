@@ -1,16 +1,18 @@
-from fastapi import WebSocket, WebSocketDisconnect, APIRouter
-from fastapi.responses import HTMLResponse
-from app.dependencies import db_dependency, user_dependency
-from app.models.goals import Goal
 import asyncio
-from app.schemas.goals import GoalRead
 import json
 
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse
+
+from app.dependencies import db_dependency
+from app.models.goals import Goal
+from app.schemas.goals import GoalRead
+
 router = APIRouter(prefix="/search", tags=["search"])
+
+
 @router.websocket("/ws/search")
-async def websocket_search(
-    websocket: WebSocket, db: db_dependency
-):
+async def websocket_search(websocket: WebSocket, db: db_dependency):
     await websocket.accept()
 
     try:
@@ -41,7 +43,7 @@ async def websocket_search(
                     goal_dict = GoalRead.from_orm(goal).dict()
                     # Convert any datetime fields to ISO format strings
                     for key, value in goal_dict.items():
-                        if hasattr(value, 'isoformat'):
+                        if hasattr(value, "isoformat"):
                             goal_dict[key] = value.isoformat()
                     result.append(goal_dict)
 
@@ -51,6 +53,7 @@ async def websocket_search(
             await asyncio.sleep(0.2)
     except WebSocketDisconnect:
         print("Connection closed")
+
 
 @router.get("/live-search", response_class=HTMLResponse)
 async def live_search_page():

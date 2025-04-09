@@ -1,9 +1,9 @@
 import uuid
-from fastapi import UploadFile, File, HTTPException, FastAPI
-from app.config import supabase  # Import your Supabase client
-import magic
-from warnings import warn
 
+import magic
+from fastapi import FastAPI, File, HTTPException, UploadFile
+
+from app.config import supabase  # Import your Supabase client
 
 KB = 1024
 MB = 1024 * KB
