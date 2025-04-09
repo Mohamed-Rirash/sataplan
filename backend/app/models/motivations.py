@@ -1,3 +1,4 @@
+from enum import unique
 import uuid
 from typing import TYPE_CHECKING
 
@@ -19,8 +20,10 @@ class Motivation(Base):
         UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4
     )
 
-    quote = Column(String(500), index=True, nullable=True, default=None)
-    link = Column(URLType, index=True, nullable=True, default=None)
+    quote = Column(
+        String(500), index=True, unique=True, nullable=True, default=None
+    )
+    link = Column(URLType, index=True, nullable=True, unique=True, default=None)
 
     goal_id = Column(
         UUID(as_uuid=True),
